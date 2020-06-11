@@ -7,6 +7,7 @@
 #endif
 #endif
 
+#include <iostream>
 #include "RtspMessage.h"
 #include "media.h"
 
@@ -200,6 +201,7 @@ bool RtspRequest::ParseTransport(std::string& message)
 {
 	std::size_t pos = message.find("Transport");
 	if(pos != std::string::npos) {
+		std::cout << "ParseTransport " << message << std::endl;
 		if((pos=message.find("RTP/AVP/TCP")) != std::string::npos) {
 			transport_ = RTP_OVER_TCP;
 			uint16_t rtpChannel = 0, rtcpChannel = 0;

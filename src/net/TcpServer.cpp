@@ -13,8 +13,9 @@ TcpServer::TcpServer(EventLoop* event_loop)
 	, acceptor_(new Acceptor(event_loop_))
 	, is_started_(false)
 {
+	// 设置客户端socket连接回调
 	acceptor_->SetNewConnectionCallback([this](SOCKET sockfd) {
-		TcpConnection::Ptr conn = this->OnConnect(sockfd);
+		TcpConnection::Ptr conn = this->OnConnect(sockfd); // 新的客户端连接请求
 		if (conn) {
 			this->AddConnection(sockfd, conn);
 			conn->SetDisconnectCallback([this](TcpConnection::Ptr conn) {
@@ -35,9 +36,9 @@ TcpServer::~TcpServer()
 
 bool TcpServer::Start(std::string ip, uint16_t port)
 {
-	Stop();
+	Stop();// 先停止所有的客户端连接
 
-	if (!is_started_) {
+	if (!is_started_) { // 判断Acceptor是否成功监听
 		if (acceptor_->Listen(ip, port) < 0) {
 			return false;
 		}

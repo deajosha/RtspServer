@@ -7,6 +7,67 @@
 #include <iostream>
 #include <string>
 
+int startCode3(uint8_t* buf)
+{
+	if (buf[0] == 0 && buf[1] == 0 && buf[2] == 1)
+		return 1;
+	else
+		return 0;
+}
+
+int startCode4(uint8_t* buf)
+{
+	if (buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 1)
+		return 1;
+	else
+		return 0;
+}
+
+uint8_t* findNextStartCode(uint8_t* buf, int len)
+{
+	int i;
+
+	if (len < 3)
+		return NULL;
+
+	for (i = 0; i < len - 3; ++i)
+	{
+		if (startCode3(buf) || startCode4(buf))
+			return buf;
+
+		++buf;
+	}
+
+	if (startCode3(buf))
+		return buf;
+
+	return NULL;
+}
+
+#define FRAME_MAX_SIZE (1024*500)
+
+class TFrame
+{
+public:
+	TFrame() :
+		mBuffer(new uint8_t[FRAME_MAX_SIZE]),
+		mFrameSize(0)
+	{ }
+
+	~TFrame()
+	{
+		delete mBuffer;
+	}
+
+	void resetBuffer() {
+		memset(mBuffer, 0, FRAME_MAX_SIZE);
+	}
+
+	uint8_t* mBuffer;
+	uint8_t* mFrame;
+	int mFrameSize;
+};
+
 class H264File
 {
 public:
@@ -20,7 +81,7 @@ public:
 	{ return (m_file != NULL); }
 
 	int ReadFrame(char* in_buf, int in_buf_size, bool* end);
-    
+	int ReadFrame(uint8_t* frame, int size);
 private:
 	FILE *m_file = NULL;
 	char *m_buf = NULL;
@@ -38,7 +99,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	H264File h264_file;
+	H264File h264_file; // H264文件句柄
 	if(!h264_file.Open(argv[1])) {
 		printf("Open %s failed.\n", argv[1]);
 		return 0;
@@ -49,10 +110,11 @@ int main(int argc, char **argv)
 	std::string port = "554";
 	std::string rtsp_url = "rtsp://" + ip + ":" + port + "/" + suffix;
 	
+	// 启动RTSP Server服务
 	std::shared_ptr<xop::EventLoop> event_loop(new xop::EventLoop());
 	std::shared_ptr<xop::RtspServer> server = xop::RtspServer::Create(event_loop.get());
 
-	if (!server->Start("0.0.0.0", atoi(port.c_str()))) {
+	if (!server->Start("0.0.0.0", atoi(port.c_str()))) { // 启动Rtsp Server Over Tcp Socket
 		printf("RTSP Server listen on %s failed.\n", port.c_str());
 		return 0;
 	}
@@ -60,7 +122,7 @@ int main(int argc, char **argv)
 #ifdef AUTH_CONFIG
 	server->SetAuthConfig("-_-", "admin", "12345");
 #endif
-
+	// 创建MediaSession对象并添加H264源
 	xop::MediaSession *session = xop::MediaSession::CreateNew("live"); 
 	session->AddSource(xop::channel_0, xop::H264Source::CreateNew()); 
 	//session->StartMulticast(); 
@@ -68,8 +130,10 @@ int main(int argc, char **argv)
 		std::cout << "The number of rtsp clients: " << clients << std::endl;
 	});
    
+	// 将MediaSession对象添加到Rtsp server对象
 	xop::MediaSessionId session_id = server->AddSession(session);
-         
+    
+	// 启动推流线程
 	std::thread t1(SendFrameThread, server.get(), session_id, &h264_file);
 	t1.detach(); 
 
@@ -87,11 +151,40 @@ void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_i
 {       
 	int buf_size = 2000000;
 	std::unique_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
+	std::unique_ptr<TFrame> tFrame(new TFrame());
 
 	while(1) {
 		bool end_of_frame = false;
-		int frame_size = h264_file->ReadFrame((char*)frame_buf.get(), buf_size, &end_of_frame);
-		if(frame_size > 0) {
+		
+		// 读取帧数据
+		// int frame_size = h264_file->ReadFrame((char*)frame_buf.get(), buf_size, &end_of_frame);
+		// std::cout << "frame Size" << frame_size << std::endl;
+		tFrame->mFrameSize = h264_file->ReadFrame(tFrame->mBuffer, FRAME_MAX_SIZE);
+		
+		if (tFrame->mFrameSize < 0)
+			return;
+
+		if (startCode3(tFrame->mBuffer))
+		{
+			tFrame->mFrame = tFrame->mBuffer + 3;
+			tFrame->mFrameSize -= 3;
+		}
+		else
+		{
+			tFrame->mFrame = tFrame->mBuffer + 4;
+			tFrame->mFrameSize -= 4;
+		}
+
+		xop::AVFrame videoFrame = { 0 };
+		videoFrame.type = 0;
+		videoFrame.size = tFrame->mFrameSize;
+		videoFrame.timestamp = xop::H264Source::GetTimestamp();
+		videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
+		memcpy(videoFrame.buffer.get(), tFrame->mFrame, videoFrame.size);
+
+		rtsp_server->PushFrame(session_id, xop::channel_0, videoFrame);
+
+		/*if(frame_size > 0) {
 			xop::AVFrame videoFrame = {0};
 			videoFrame.type = 0; 
 			videoFrame.size = frame_size;
@@ -102,7 +195,7 @@ void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_i
 		}
 		else {
 			break;
-		}
+		}*/
       
 		xop::Timer::Sleep(40); 
 	};
@@ -228,4 +321,31 @@ int H264File::ReadFrame(char* in_buf, int in_buf_size, bool* end)
 	return size;
 }
 
+int H264File::ReadFrame(uint8_t* frame, int size)
+{
+	int rSize, frameSize;
+	uint8_t* nextStartCode;
+
+	if (m_file == NULL) {
+		return -1;
+	}
+
+	rSize = (int)fread(frame, 1, size, m_file);
+	if (!startCode3(frame) && !startCode4(frame))
+		return -1;
+
+	nextStartCode = findNextStartCode(frame + 3, rSize - 3);
+	if (!nextStartCode)
+	{
+		fseek(m_file, 0, SEEK_SET);
+		frameSize = rSize;
+	}
+	else
+	{
+		frameSize = (nextStartCode - frame);
+		fseek(m_file, frameSize - rSize, SEEK_CUR);
+	}
+
+	return frameSize;
+}
 

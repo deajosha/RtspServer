@@ -70,6 +70,7 @@ void SelectTaskScheduler::RemoveChannel(ChannelPtr& channel)
 	}
 }
 
+// selectTaskScheduler 线程处理函数，监听RTSP Over Tcp 连接
 bool SelectTaskScheduler::HandleEvent(int timeout)
 {	
 	if(channels_.empty()) {

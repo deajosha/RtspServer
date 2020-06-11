@@ -30,7 +30,7 @@ EventLoop::~EventLoop()
 	this->Quit();
 }
 
-std::shared_ptr<TaskScheduler> EventLoop::GetTaskScheduler()
+std::shared_ptr<TaskScheduler> EventLoop::GetTaskScheduler() // 分配TaskScheduler
 {
 	std::lock_guard<std::mutex> locker(mutex_);
 	if (task_schedulers_.size() == 1) {
@@ -56,7 +56,7 @@ void EventLoop::Loop()
 		return ;
 	}
 
-	for (uint32_t n = 0; n < num_threads_; n++) 
+	for (uint32_t n = 0; n < num_threads_; n++) // 创建任务及线程
 	{
 #if defined(__linux) || defined(__linux__) 
 		std::shared_ptr<TaskScheduler> task_scheduler_ptr(new EpollTaskScheduler(n));
@@ -71,7 +71,7 @@ void EventLoop::Loop()
 
 	int priority = TASK_SCHEDULER_PRIORITY_REALTIME;
 
-	for (auto iter : threads_) 
+	for (auto iter : threads_) // 设置每个线程的优先级
 	{
 #if defined(__linux) || defined(__linux__) 
 

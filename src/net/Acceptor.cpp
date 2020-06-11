@@ -39,6 +39,7 @@ int Acceptor::Listen(std::string ip, uint16_t port)
 		return -1;
 	}
 
+	// 设置rtsp client 数据读取回调
 	channel_ptr_->SetReadCallback([this]() { this->OnAccept(); });
 	channel_ptr_->EnableReading();
 	event_loop_->UpdateChannel(channel_ptr_);

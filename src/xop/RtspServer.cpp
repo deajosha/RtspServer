@@ -90,6 +90,7 @@ bool RtspServer::PushFrame(MediaSessionId sessionId, MediaChannelId channelId, A
         }
     }
 
+	// 向rtsp client 推送媒体帧数据
     if (sessionPtr!=nullptr && sessionPtr->GetNumClient()!=0) {
         return sessionPtr->HandleFrame(channelId, frame);
     }

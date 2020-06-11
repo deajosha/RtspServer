@@ -8,7 +8,7 @@
 
 using namespace xop;
 
-TcpSocket::TcpSocket(SOCKET sockfd)
+TcpSocket::TcpSocket(SOCKET sockfd) // Tcp Socket Wrapper
     : sockfd_(sockfd)
 {
     

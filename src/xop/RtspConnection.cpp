@@ -111,6 +111,7 @@ bool RtspConnection::HandleRtspRequest(BufferReader& buffer)
 
     if (rtsp_request_->ParseRequest(&buffer)) {
 		RtspRequest::Method method = rtsp_request_->GetMethod();
+		std::cout << "request method :" << method << std::endl;
 		if(method == RtspRequest::RTCP) {
 			HandleRtcp(buffer);
 			return true;
