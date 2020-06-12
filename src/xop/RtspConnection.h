@@ -85,7 +85,7 @@ private:
 	friend class RtpConnection;
 	friend class MediaSession;
 	friend class RtspServer;
-	friend class RtspPusher;
+	//friend class RtspPusher;
 
 	bool OnRead(BufferReader& buffer);
 	void OnClose();

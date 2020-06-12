@@ -6,6 +6,7 @@
 using namespace xop;
 using namespace std;
 
+RtspServer* RtspServer::rtspServer_ = nullptr;
 RtspServer::RtspServer(EventLoop* loop)
 	: TcpServer(loop)
 {

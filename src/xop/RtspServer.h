@@ -18,7 +18,8 @@ class RtspConnection;
 
 class RtspServer : public Rtsp, public TcpServer
 {
-public:    
+public:   
+	static RtspServer* rtspServer_;
 	static std::shared_ptr<RtspServer> Create(xop::EventLoop* loop);
 	~RtspServer();
 
