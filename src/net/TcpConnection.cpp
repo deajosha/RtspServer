@@ -21,7 +21,7 @@ TcpConnection::TcpConnection(TaskScheduler *task_scheduler, SOCKET sockfd)
 	SocketUtil::SetKeepAlive(sockfd);
 
 	channel_->EnableReading();
-	task_scheduler_->UpdateChannel(channel_);
+	task_scheduler_->UpdateChannel(channel_); // 把channel对象更新到TaskScheduler中，并开始读取rtsp Cleint 请求
 }
 
 TcpConnection::~TcpConnection()

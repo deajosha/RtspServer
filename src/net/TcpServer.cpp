@@ -15,7 +15,7 @@ TcpServer::TcpServer(EventLoop* event_loop)
 {
 	// 设置客户端socket连接回调
 	acceptor_->SetNewConnectionCallback([this](SOCKET sockfd) {
-		TcpConnection::Ptr conn = this->OnConnect(sockfd); // 新的客户端连接请求
+		TcpConnection::Ptr conn = this->OnConnect(sockfd); // client_fd,新的客户端连接请求
 		if (conn) {
 			this->AddConnection(sockfd, conn);
 			conn->SetDisconnectCallback([this](TcpConnection::Ptr conn) {

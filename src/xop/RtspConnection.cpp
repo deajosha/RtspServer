@@ -53,6 +53,7 @@ RtspConnection::~RtspConnection()
 
 }
 
+// 读取并处理Rtsp Client请求
 bool RtspConnection::OnRead(BufferReader& buffer)
 {
 	KeepAlive();
@@ -243,7 +244,7 @@ void RtspConnection::HandleCmdDescribe()
 	std::shared_ptr<char> res(new char[4096]);
 	MediaSessionPtr media_session = nullptr;
 
-	auto rtsp = rtsp_.lock();
+	auto rtsp = rtsp_.lock(); // 管理媒体会话的RtspServer对象
 	if (rtsp) {
 		media_session = rtsp->LookMediaSession(rtsp_request_->GetRtspUrlSuffix());
 	}

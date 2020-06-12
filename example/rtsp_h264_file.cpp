@@ -2,47 +2,11 @@
 
 #include "xop/RtspServer.h"
 #include "net/Timer.h"
+#include "xop/H264Parser.h"
 #include <thread>
 #include <memory>
 #include <iostream>
 #include <string>
-
-int startCode3(uint8_t* buf)
-{
-	if (buf[0] == 0 && buf[1] == 0 && buf[2] == 1)
-		return 1;
-	else
-		return 0;
-}
-
-int startCode4(uint8_t* buf)
-{
-	if (buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 1)
-		return 1;
-	else
-		return 0;
-}
-
-uint8_t* findNextStartCode(uint8_t* buf, int len)
-{
-	int i;
-
-	if (len < 3)
-		return NULL;
-
-	for (i = 0; i < len - 3; ++i)
-	{
-		if (startCode3(buf) || startCode4(buf))
-			return buf;
-
-		++buf;
-	}
-
-	if (startCode3(buf))
-		return buf;
-
-	return NULL;
-}
 
 #define FRAME_MAX_SIZE (1024*500)
 
@@ -164,7 +128,7 @@ void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_i
 		if (tFrame->mFrameSize < 0)
 			return;
 
-		if (startCode3(tFrame->mBuffer))
+		if (xop::H264Parser::three_bytes_start_code(tFrame->mBuffer))
 		{
 			tFrame->mFrame = tFrame->mBuffer + 3;
 			tFrame->mFrameSize -= 3;
@@ -330,11 +294,11 @@ int H264File::ReadFrame(uint8_t* frame, int size)
 		return -1;
 	}
 
-	rSize = (int)fread(frame, 1, size, m_file);
-	if (!startCode3(frame) && !startCode4(frame))
+	rSize = static_cast<int>(fread(frame, 1, size, m_file));
+	if (!xop::H264Parser::three_bytes_start_code(frame) && !xop::H264Parser::four_bytes_start_code(frame))
 		return -1;
 
-	nextStartCode = findNextStartCode(frame + 3, rSize - 3);
+	nextStartCode = xop::H264Parser::find_next_start_code(frame + 3, rSize - 3);
 	if (!nextStartCode)
 	{
 		fseek(m_file, 0, SEEK_SET);
@@ -342,7 +306,7 @@ int H264File::ReadFrame(uint8_t* frame, int size)
 	}
 	else
 	{
-		frameSize = (nextStartCode - frame);
+		frameSize = static_cast<int>(nextStartCode - frame);
 		fseek(m_file, frameSize - rSize, SEEK_CUR);
 	}
 

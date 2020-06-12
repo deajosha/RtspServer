@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 
-#define PUSH_TEST "rtsp://10.11.165.203:554/test" 
+#define PUSH_TEST "rtsp://192.168.40.167:554/test" 
 
 void snedFrameThread(xop::RtspPusher* rtspPusher);
 
@@ -44,6 +44,7 @@ void snedFrameThread(xop::RtspPusher* rtsp_pusher)
 {       
 	while(rtsp_pusher->IsConnected())
 	{      
+		// 读取video Frame
 		{                              
 			/*
 				//获取一帧 H264, 打包
@@ -56,7 +57,8 @@ void snedFrameThread(xop::RtspPusher* rtsp_pusher)
 				rtsp_pusher->PushFrame(xop::channel_0, videoFrame); //推流到服务器, 接口线程安全
 			*/
 		}
-                
+        
+		// 读取Audio Frame
 		{				                       
 			/*
 				//获取一帧 AAC, 打包
