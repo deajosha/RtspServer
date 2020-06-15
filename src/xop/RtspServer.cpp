@@ -6,9 +6,11 @@
 using namespace xop;
 using namespace std;
 
-RtspServer* RtspServer::rtspServer_ = nullptr;
-RtspServer::RtspServer(EventLoop* loop)
-	: TcpServer(loop)
+std::shared_ptr<RtspServer> RtspServer::rtsp_server_ = nullptr;
+std::shared_ptr<EventLoop> RtspServer::event_loop_ = nullptr;
+
+RtspServer::RtspServer(EventLoop* event_loop)
+	: TcpServer(event_loop)
 {
 
 }
@@ -18,10 +20,14 @@ RtspServer::~RtspServer()
 	
 }
 
-std::shared_ptr<RtspServer> RtspServer::Create(xop::EventLoop* loop)
+std::shared_ptr<RtspServer> RtspServer::intance()
 {
-	std::shared_ptr<RtspServer> server(new RtspServer(loop));
-	return server;
+	if (nullptr == RtspServer::rtsp_server_) {
+		event_loop_ = std::make_shared<EventLoop>();
+		rtsp_server_ = std::shared_ptr<RtspServer>(new RtspServer(event_loop_.get()));
+	}
+	
+	return rtsp_server_;
 }
 
 MediaSessionId RtspServer::AddSession(MediaSession* session)

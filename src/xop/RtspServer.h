@@ -19,8 +19,8 @@ class RtspConnection;
 class RtspServer : public Rtsp, public TcpServer
 {
 public:   
-	static RtspServer* rtspServer_;
-	static std::shared_ptr<RtspServer> Create(xop::EventLoop* loop);
+	static std::shared_ptr<RtspServer> intance();
+	
 	~RtspServer();
 
     MediaSessionId AddSession(MediaSession* session);
@@ -30,8 +30,12 @@ public:
 
 private:
     friend class RtspConnection;
+	
+	RtspServer(EventLoop* event_loop);
 
-	RtspServer(xop::EventLoop* loop);
+	static std::shared_ptr<RtspServer> rtsp_server_; 
+	static std::shared_ptr<EventLoop> event_loop_;
+
     MediaSessionPtr LookMediaSession(const std::string& suffix);
     MediaSessionPtr LookMediaSession(MediaSessionId sessionId);
     virtual TcpConnection::Ptr OnConnect(SOCKET sockfd);

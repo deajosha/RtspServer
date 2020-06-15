@@ -37,7 +37,7 @@ protected:
 	virtual void AddConnection(SOCKET sockfd, TcpConnection::Ptr tcpConn);
 	virtual void RemoveConnection(SOCKET sockfd);
 
-	EventLoop* event_loop_;
+	std::shared_ptr<xop::EventLoop> event_loop_;
 	uint16_t port_;
 	std::string ip_;
 	std::unique_ptr<Acceptor> acceptor_; 

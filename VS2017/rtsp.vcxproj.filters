@@ -111,8 +111,11 @@
     <ClCompile Include="..\src\xop\DigestAuthentication.cpp">
       <Filter>源文件\xop</Filter>
     </ClCompile>
-    <ClCompile Include="..\example\rtsp_h264_file.cpp">
+    <ClCompile Include="..\example\rtsp_h264.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\xop\RtspPusher.cpp">
+      <Filter>源文件\xop</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -229,6 +232,9 @@
     </ClInclude>
     <ClInclude Include="..\src\3rdpart\md5\md5.hpp">
       <Filter>源文件\3rdpart\md5</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\xop\RtspPusher.h">
+      <Filter>源文件\xop</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

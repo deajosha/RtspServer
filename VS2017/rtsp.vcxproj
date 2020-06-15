@@ -123,7 +123,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\example\rtsp_h264_file.cpp" />
+    <ClCompile Include="..\example\rtsp_h264.cpp" />
     <ClCompile Include="..\src\net\Acceptor.cpp" />
     <ClCompile Include="..\src\net\BufferReader.cpp" />
     <ClCompile Include="..\src\net\BufferWriter.cpp" />
@@ -151,6 +151,7 @@
     <ClCompile Include="..\src\xop\RtpConnection.cpp" />
     <ClCompile Include="..\src\xop\RtspConnection.cpp" />
     <ClCompile Include="..\src\xop\RtspMessage.cpp" />
+    <ClCompile Include="..\src\xop\RtspPusher.cpp" />
     <ClCompile Include="..\src\xop\RtspServer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -191,6 +192,7 @@
     <ClInclude Include="..\src\xop\rtsp.h" />
     <ClInclude Include="..\src\xop\RtspConnection.h" />
     <ClInclude Include="..\src\xop\RtspMessage.h" />
+    <ClInclude Include="..\src\xop\RtspPusher.h" />
     <ClInclude Include="..\src\xop\RtspServer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -13,8 +13,10 @@ class RtspConnection;
 class RtspPusher : public Rtsp
 {
 public:
-	static std::shared_ptr<RtspPusher> Create(xop::EventLoop* loop);
+	RtspPusher(std::string rtsp_url);
 	~RtspPusher();
+
+	void setup();
 
 	void AddSession(MediaSession* session);
 	void RemoveSession(MediaSessionId session_id);
@@ -24,11 +26,12 @@ public:
 	bool IsConnected();
 
 	bool PushFrame(MediaChannelId channelId, AVFrame frame);
+	//static void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_id, H264File* h264_file);
 
 private:
 	friend class RtspConnection;
 
-	RtspPusher(xop::EventLoop *event_loop);
+	
 	MediaSessionPtr LookMediaSession(MediaSessionId session_id);
 
 	xop::EventLoop* event_loop_ = nullptr;

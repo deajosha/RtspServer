@@ -50,6 +50,10 @@ public:
 	virtual std::string GetRtspUrl()
 	{ return rtsp_url_info_.url; }
 
+	virtual std::string get_rtsp_suffix() {
+		return rtsp_url_info_.suffix;
+	}
+
 	bool parseRtspUrl(std::string url)
 	{
 		char ip[100] = { 0 };

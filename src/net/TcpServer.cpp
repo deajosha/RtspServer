@@ -10,7 +10,7 @@ using namespace std;
 TcpServer::TcpServer(EventLoop* event_loop)
 	: event_loop_(event_loop)
 	, port_(0)
-	, acceptor_(new Acceptor(event_loop_))
+	, acceptor_(new Acceptor(event_loop))
 	, is_started_(false)
 {
 	// 设置客户端socket连接回调
