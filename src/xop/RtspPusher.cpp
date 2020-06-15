@@ -1,5 +1,6 @@
 ﻿#include "RtspPusher.h"
 #include "xop/RtspServer.h"
+#include "xop/H264Parser.h"
 #include "RtspConnection.h"
 #include "net/Logger.h"
 #include "net/TcpSocket.h"
@@ -8,14 +9,24 @@
 
 using namespace xop;
 
+bool RtspPusher::stop_pusher_ = false;
+
 RtspPusher::RtspPusher(std::string rtsp_url)
+	:pusher_thread_(nullptr)
 {
 	parseRtspUrl(rtsp_url);
 }
 
 RtspPusher::~RtspPusher()
 {
-	this->Close();
+	stop();
+}
+
+void RtspPusher::stop() {
+	if (!stop_pusher_) {
+		stop_pusher_ = true;
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
 }
 
 void RtspPusher::setup() {
@@ -25,176 +36,181 @@ void RtspPusher::setup() {
 	xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
 	session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
 	//session->StartMulticast(); 
-	session->SetNotifyCallback([](xop::MediaSessionId session_id, uint32_t clients) {
+	session->SetNotifyCallback([this](xop::MediaSessionId session_id, uint32_t clients) {
 		std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
+
+		if (0 == clients) { // 是否释放推流通道
+			RtspPusherManager::instance()->remove_pusher(session_id);
+		}
 	});
 
-	// 将MediaSession对象添加到Rtsp server对象
-	xop::MediaSessionId session_id = xop::RtspServer::intance()->AddSession(session);
-
-	// 开启推流线程 并获取media_session
-	//h264file* h264_file = new h264file();
-	//if (!h264_file->open("test.h264")) {
-	//	printf("open test.h264 failed.\n");
-	//	return;
-	//}
+	session_id_ = xop::RtspServer::intance()->AddSession(session);
 
 	// 启动拉流线程
-	//std::shared_ptr<std::thread> t1 = std::make_shared<std::thread>(SendFrameThread, xop::RtspServer::intance().get(), session_id, h264_file);
-	//t1->detach();
+	pusher_thread_ = std::make_shared<std::thread>(test_thread, session_id_);
+	pusher_thread_->detach();
 }
 
-//void RtspPusher::SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_id, H264File* h264_file)
-//{
-//	int buf_size = 2000000;
-//	std::unique_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
-//	std::unique_ptr<TFrame> tFrame(new TFrame());
-//
-//	while (1) {
-//		bool end_of_frame = false;
-//
-//		// 读取帧数据
-//		tFrame->mFrameSize = h264_file->ReadFrame(tFrame->mBuffer, FRAME_MAX_SIZE);
-//
-//		if (tFrame->mFrameSize < 0)
-//			return;
-//
-//		if (xop::H264Parser::three_bytes_start_code(tFrame->mBuffer))
-//		{
-//			tFrame->mFrame = tFrame->mBuffer + 3;
-//			tFrame->mFrameSize -= 3;
-//		}
-//		else
-//		{
-//			tFrame->mFrame = tFrame->mBuffer + 4;
-//			tFrame->mFrameSize -= 4;
-//		}
-//
-//		xop::AVFrame videoFrame = { 0 };
-//		videoFrame.type = 0;
-//		videoFrame.size = tFrame->mFrameSize;
-//		videoFrame.timestamp = xop::H264Source::GetTimestamp();
-//		videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
-//		memcpy(videoFrame.buffer.get(), tFrame->mFrame, videoFrame.size);
-//
-//		rtsp_server->PushFrame(session_id, xop::channel_0, videoFrame);
-//
-//		xop::Timer::Sleep(40);
-//	};
-//}
+void RtspPusher::test_thread(xop::MediaSessionId session_id) {
 
+	// 开启推流线程 并获取media_session
+	int buf_size = 1024 * 500;
+	int read_frame_size = 0;
+	uint8_t* read_frame = nullptr;
+	std::unique_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
 
-void RtspPusher::AddSession(MediaSession* session)
-{
-    std::lock_guard<std::mutex> locker(mutex_);
-    media_session_.reset(session);
+	// 开启推流线程 并获取media_session
+	std::shared_ptr<H264File> h264_file(new H264File());
+	if (!h264_file->Open("test.h264")) {
+		printf("open test.h264 failed.\n");
+		return;
+	}
+
+	while (!stop_pusher_) {
+
+		// 读取帧数据
+		read_frame_size = h264_file->ReadFrame(frame_buf.get(), buf_size);
+
+		if (read_frame_size < 0) {
+			std::cout << "文件读取结束" << std::endl;
+			break;
+		}
+
+		if (xop::H264Parser::three_bytes_start_code(frame_buf.get()))
+		{
+			read_frame = frame_buf.get() + 3;
+			read_frame_size -= 3;
+		}
+		else
+		{
+			read_frame = frame_buf.get() + 4;
+			read_frame_size -= 4;
+		}
+
+		xop::AVFrame videoFrame = { 0 };
+		videoFrame.type = 0;
+		videoFrame.size = read_frame_size;
+		videoFrame.timestamp = xop::H264Source::GetTimestamp();
+		videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
+		memcpy(videoFrame.buffer.get(), read_frame, videoFrame.size);
+
+		RtspServer::intance()->PushFrame(session_id, xop::channel_0, videoFrame);
+
+		xop::Timer::Sleep(40);
+	};
 }
 
-void RtspPusher::RemoveSession(MediaSessionId sessionId)
+H264File::H264File(int buf_size)
+	: m_buf_size(buf_size)
 {
-	std::lock_guard<std::mutex> locker(mutex_);
-	media_session_ = nullptr;
+	m_buf = new char[m_buf_size];
 }
 
-MediaSessionPtr RtspPusher::LookMediaSession(MediaSessionId sessionId)
+H264File::~H264File()
 {
-	return media_session_;
+	delete m_buf;
 }
 
-int RtspPusher::OpenUrl(std::string url, int msec)
+bool H264File::Open(const char *path)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-
-	static xop::Timestamp tp;
-	int timeout = msec;
-	if (timeout <= 0) {
-		timeout = 10000;
-	}
-
-	tp.reset();
-
-	if (!this->parseRtspUrl(url)) {
-		LOG_ERROR("rtsp url(%s) was illegal.\n", url.c_str());
-		return -1;
-	}
-
-	if (rtsp_conn_ != nullptr) {
-		std::shared_ptr<RtspConnection> rtspConn = rtsp_conn_;
-		SOCKET sockfd = rtspConn->GetSocket();
-		task_scheduler_->AddTriggerEvent([sockfd, rtspConn]() {
-			rtspConn->Disconnect();
-		});
-		rtsp_conn_ = nullptr;
-	}
-
-	TcpSocket tcpSocket;
-	tcpSocket.Create();
-	if (!tcpSocket.Connect(rtsp_url_info_.ip, rtsp_url_info_.port, timeout))
-	{
-		tcpSocket.Close();
-		return -1;
-	}
-
-	task_scheduler_ = event_loop_->GetTaskScheduler().get();
-	rtsp_conn_.reset(new RtspConnection(shared_from_this(), task_scheduler_, tcpSocket.GetSocket()));
-    event_loop_->AddTriggerEvent([this]() {
-		//rtsp_conn_->SendOptions(RtspConnection::RTSP_PUSHER);
-    });
-
-	timeout -= (int)tp.elapsed();
-	if (timeout < 0) {
-		timeout = 1000;
-	}
-
-	do
-	{
-		xop::Timer::Sleep(100);
-		timeout -= 100;
-	} while (!rtsp_conn_->IsRecord() && timeout > 0);
-
-	if (!rtsp_conn_->IsRecord()) {
-		std::shared_ptr<RtspConnection> rtspConn = rtsp_conn_;
-		SOCKET sockfd = rtspConn->GetSocket();
-		task_scheduler_->AddTriggerEvent([sockfd, rtspConn]() {
-			rtspConn->Disconnect();
-		});
-		rtsp_conn_ = nullptr;
-		return -1;
-	}
-
-	return 0;
-}
-
-void RtspPusher::Close()
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-
-	if (rtsp_conn_ != nullptr) {
-		std::shared_ptr<RtspConnection> rtsp_conn = rtsp_conn_;
-		SOCKET sockfd = rtsp_conn->GetSocket();
-		task_scheduler_->AddTriggerEvent([sockfd, rtsp_conn]() {
-			rtsp_conn->Disconnect();
-		});
-		rtsp_conn_ = nullptr;
-	}
-}
-
-bool RtspPusher::IsConnected()
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-
-	if (rtsp_conn_ != nullptr) {
-		return (!rtsp_conn_->IsClosed());
-	}
-	return false;
-}
-
-bool RtspPusher::PushFrame(MediaChannelId channelId, AVFrame frame)
-{
-	std::lock_guard<std::mutex> locker(mutex_);
-	if (!media_session_ || !rtsp_conn_) {
+	m_file = fopen(path, "rb");
+	if (m_file == NULL) {
 		return false;
 	}
 
-	return media_session_->HandleFrame(channelId, frame);
+	return true;
 }
+
+void H264File::Close()
+{
+	if (m_file) {
+		fclose(m_file);
+		m_file = NULL;
+		m_count = 0;
+		m_bytes_used = 0;
+	}
+}
+
+int H264File::ReadFrame(uint8_t* frame, int size)
+{
+	int rSize, frameSize;
+	uint8_t* nextStartCode;
+
+	if (m_file == NULL) {
+		return -1;
+	}
+
+	rSize = static_cast<int>(fread(frame, 1, size, m_file));
+	bool end = feof(m_file);
+	if (end || (!xop::H264Parser::three_bytes_start_code(frame) && !xop::H264Parser::four_bytes_start_code(frame)))
+		return -1;
+
+	nextStartCode = xop::H264Parser::find_next_start_code(frame + 3, rSize - 3);
+	if (!nextStartCode)
+	{
+		fseek(m_file, 0, SEEK_SET);
+		frameSize = rSize;
+	}
+	else
+	{
+		frameSize = static_cast<int>(nextStartCode - frame);
+		fseek(m_file, frameSize - rSize, SEEK_CUR);
+	}
+
+	return frameSize;
+}
+
+std::shared_ptr<RtspPusherManager> RtspPusherManager::rtsp_pusher_manager_(new RtspPusherManager());
+
+std::shared_ptr<RtspPusherManager> RtspPusherManager::instance() {
+	return rtsp_pusher_manager_;
+}
+
+void RtspPusherManager::add_pusher(const std::string &rtsp_url, const std::string& url_suffix) {
+	std::lock_guard<std::mutex> locker(mutex_);
+	
+	if (rtsp_pusher_.find(url_suffix) == rtsp_pusher_.end()) {
+		std::shared_ptr<RtspPusher> rtsp_pusher = std::make_shared<RtspPusher>(rtsp_url);
+		rtsp_pusher->setup();
+		session_id_pusher_.emplace(rtsp_pusher->get_session_id(), rtsp_pusher->get_rtsp_suffix());
+		rtsp_pusher_.emplace(rtsp_pusher->get_rtsp_suffix(), std::move(rtsp_pusher));
+	}
+}
+
+void RtspPusherManager::remove_pusher(const std::string & url_suffix) {
+	std::lock_guard<std::mutex> locker(mutex_);
+	
+	if (rtsp_pusher_.find(url_suffix) != rtsp_pusher_.end()) {
+		rtsp_pusher_[url_suffix]->stop();
+		rtsp_pusher_.erase(url_suffix);
+	}
+}
+
+void RtspPusherManager::remove_pusher(MediaSessionId session_id) {
+	std::lock_guard<std::mutex> locker(mutex_);
+
+	auto iter = session_id_pusher_.find(session_id);
+	if (iter != session_id_pusher_.end()) {
+		rtsp_pusher_[iter->second]->stop();
+		rtsp_pusher_.erase(iter->second);
+		session_id_pusher_.erase(session_id);
+	}
+}
+
+RtspPusher* RtspPusherManager::find_pusher(const std::string & url_suffix) {
+	std::lock_guard<std::mutex> locker(mutex_);
+
+	auto iter = rtsp_pusher_.find(url_suffix);
+
+	return (iter != rtsp_pusher_.end()) ? iter->second.get() : nullptr;
+}
+
+RtspPusher* RtspPusherManager::find_pusher(MediaSessionId session_id) {
+	std::lock_guard<std::mutex> locker(mutex_);
+
+	auto iter = session_id_pusher_.find(session_id);
+	
+	return (iter != session_id_pusher_.end()) ? rtsp_pusher_[iter->second].get() : nullptr;
+}
+
+

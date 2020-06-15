@@ -10,6 +10,29 @@ namespace xop
 
 class RtspConnection;
 
+class H264File
+{
+public:
+	H264File(int buf_size = 500000);
+	~H264File();
+
+	bool Open(const char *path);
+	void Close();
+
+	bool IsOpened() const
+	{
+		return (m_file != NULL);
+	}
+
+	int ReadFrame(uint8_t* frame, int size);
+private:
+	FILE *m_file = NULL;
+	char *m_buf = NULL;
+	int  m_buf_size = 0;
+	int  m_bytes_used = 0;
+	int  m_count = 0;
+};
+
 class RtspPusher : public Rtsp
 {
 public:
@@ -17,28 +40,38 @@ public:
 	~RtspPusher();
 
 	void setup();
+	void stop();
+	static void test_thread(MediaSessionId session_id);
 
-	void AddSession(MediaSession* session);
-	void RemoveSession(MediaSessionId session_id);
-
-	int  OpenUrl(std::string url, int msec = 3000);
-	void Close();
-	bool IsConnected();
-
-	bool PushFrame(MediaChannelId channelId, AVFrame frame);
-	//static void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_id, H264File* h264_file);
+	MediaSessionId get_session_id() { return session_id_; }
 
 private:
 	friend class RtspConnection;
-
 	
-	MediaSessionPtr LookMediaSession(MediaSessionId session_id);
+	static bool stop_pusher_;
+	MediaSessionId session_id_;
+	std::shared_ptr<std::thread> pusher_thread_;
 
-	xop::EventLoop* event_loop_ = nullptr;
-	xop::TaskScheduler* task_scheduler_ = nullptr;
+};
+
+class RtspPusherManager {
+public:
+	static std::shared_ptr<RtspPusherManager> instance();
+
+	void add_pusher(const std::string &rtsp_url, const std::string& url_suffix);
+	void remove_pusher(const std::string &url_suffix);
+	void remove_pusher(MediaSessionId session_id);
+	RtspPusher* find_pusher(const std::string & url_suffix);
+	RtspPusher* find_pusher(MediaSessionId session_id);
+
+private:
+	RtspPusherManager() {}
+
+	static std::shared_ptr<RtspPusherManager> rtsp_pusher_manager_;
+
 	std::mutex mutex_;
-	std::shared_ptr<RtspConnection> rtsp_conn_;
-	std::shared_ptr<MediaSession> media_session_;
+	std::unordered_map<std::string, std::shared_ptr<RtspPusher>> rtsp_pusher_;
+	std::unordered_map<MediaSessionId, std::string> session_id_pusher_;
 };
 
 }

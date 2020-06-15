@@ -7,6 +7,7 @@
 #include "MediaSource.h"
 #include "net/SocketUtil.h"
 #include "xop/H264Parser.h"
+#include "xop/RtspPusher.h"
 #include "net/Timer.h"
 
 #define USER_AGENT "-_-"
@@ -232,130 +233,6 @@ void RtspConnection::HandleCmdOption()
 	this->SendRtspMessage(res, size);	
 }
 
-#define FRAME_MAX_SIZE (1024*500)
-
-class H264File
-{
-public:
-	H264File(int buf_size = 500000);
-	~H264File();
-
-	bool Open(const char *path);
-	void Close();
-
-	bool IsOpened() const
-	{
-		return (m_file != NULL);
-	}
-
-	int ReadFrame(uint8_t* frame, int size);
-private:
-	FILE *m_file = NULL;
-	char *m_buf = NULL;
-	int  m_buf_size = 0;
-	int  m_bytes_used = 0;
-	int  m_count = 0;
-};
-H264File::H264File(int buf_size)
-	: m_buf_size(buf_size)
-{
-	m_buf = new char[m_buf_size];
-}
-
-H264File::~H264File()
-{
-	delete m_buf;
-}
-
-bool H264File::Open(const char *path)
-{
-	m_file = fopen(path, "rb");
-	if (m_file == NULL) {
-		return false;
-	}
-
-	return true;
-}
-
-void H264File::Close()
-{
-	if (m_file) {
-		fclose(m_file);
-		m_file = NULL;
-		m_count = 0;
-		m_bytes_used = 0;
-	}
-}
-
-int H264File::ReadFrame(uint8_t* frame, int size)
-{
-	int rSize, frameSize;
-	uint8_t* nextStartCode;
-
-	if (m_file == NULL) {
-		return -1;
-	}
-
-	rSize = static_cast<int>(fread(frame, 1, size, m_file));
-	if (!xop::H264Parser::three_bytes_start_code(frame) && !xop::H264Parser::four_bytes_start_code(frame))
-		return -1;
-
-	nextStartCode = xop::H264Parser::find_next_start_code(frame + 3, rSize - 3);
-	if (!nextStartCode)
-	{
-		fseek(m_file, 0, SEEK_SET);
-		frameSize = rSize;
-	}
-	else
-	{
-		frameSize = static_cast<int>(nextStartCode - frame);
-		fseek(m_file, frameSize - rSize, SEEK_CUR);
-	}
-
-	return frameSize;
-}
-
-void SendFrameThread(xop::RtspServer* rtsp_server, xop::MediaSessionId session_id, H264File* h264_file)
-{
-	int buf_size = FRAME_MAX_SIZE;
-	int read_frame_size = 0;
-	uint8_t* read_frame = nullptr;
-	std::unique_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
-
-	while (1) {
-		bool end_of_frame = false;
-
-		// 读取帧数据
-		read_frame_size = h264_file->ReadFrame(frame_buf.get(), FRAME_MAX_SIZE);
-
-		if (read_frame_size < 0)
-			return;
-
-		if (xop::H264Parser::three_bytes_start_code(frame_buf.get()))
-		{
-			read_frame = frame_buf.get() + 3;
-			read_frame_size -= 3;
-		}
-		else
-		{
-			read_frame = frame_buf.get() + 4;
-			read_frame_size -= 4;
-		}
-
-		xop::AVFrame videoFrame = { 0 };
-		videoFrame.type = 0;
-		videoFrame.size = read_frame_size;
-		videoFrame.timestamp = xop::H264Source::GetTimestamp();
-		videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
-		memcpy(videoFrame.buffer.get(), read_frame, videoFrame.size);
-
-		rtsp_server->PushFrame(session_id, xop::channel_0, videoFrame);
-
-		xop::Timer::Sleep(40);
-	};
-}
-
-
 void RtspConnection::HandleCmdDescribe()
 {
 	if (auth_info_!=nullptr && !HandleAuthentication()) {
@@ -372,33 +249,12 @@ void RtspConnection::HandleCmdDescribe()
 
 	auto rtsp = rtsp_.lock();
 	if (rtsp) {
-		std::string rtsp_url_suffix = rtsp_request_->GetRtspUrlSuffix();
-		media_session = rtsp->LookMediaSession(rtsp_url_suffix);
-		if (nullptr == media_session) { // 创建Pusher
-			
-			// 创建MediaSession对象并添加H264源
-			xop::MediaSession *session = xop::MediaSession::CreateNew(rtsp_url_suffix);
-			session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
-			//session->StartMulticast(); 
-			session->SetNotifyCallback([](xop::MediaSessionId session_id, uint32_t clients) {
-				std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
-			});
-
-			// 将MediaSession对象添加到Rtsp server对象
-			xop::MediaSessionId session_id = xop::RtspServer::intance()->AddSession(session);
-
-			// 开启推流线程 并获取media_session
-			H264File* h264_file = new H264File();
-			if (!h264_file->Open("test.h264")) {
-				printf("open test.h264 failed.\n");
-				return;
-			}
-
-			// 启动拉流线程
-			std::shared_ptr<std::thread> t1 = std::make_shared<std::thread>(SendFrameThread, xop::RtspServer::intance().get(), session_id, h264_file);
-			t1->detach();
-
-			media_session = rtsp->LookMediaSession(rtsp_url_suffix);
+		std::string url_suffix = rtsp_request_->GetRtspUrlSuffix();
+		std::string rtsp_url = rtsp_request_->GetRtspUrl();
+		media_session = rtsp->LookMediaSession(url_suffix);
+		if (nullptr == media_session) { 
+			RtspPusherManager::instance()->add_pusher(rtsp_url, url_suffix); // 创建Pusher
+			media_session = rtsp->LookMediaSession(url_suffix);
 		}
 	}
 	
@@ -539,6 +395,9 @@ void RtspConnection::HandleCmdTeardown()
 	SendRtspMessage(res, size);
 
 	HandleClose();
+
+	// 判断个数
+	
 }
 
 void RtspConnection::HandleCmdGetParamter()
