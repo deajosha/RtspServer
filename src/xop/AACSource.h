@@ -29,7 +29,6 @@ public:
     bool HandleFrame(MediaChannelId channel_id, AVFrame frame);
 
     static uint32_t GetTimestamp(uint32_t samplerate =44100);
-
 private:
     AACSource(uint32_t samplerate, uint32_t channels, bool has_adts);
 
@@ -37,7 +36,7 @@ private:
     uint32_t channels_ = 2;         
     bool has_adts_ = true;
 
-	static const int ADTS_SIZE = 7;
+	static const int ADTS_SIZE = 9;
 	static const int AU_SIZE   = 4;
 };
 

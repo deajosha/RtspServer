@@ -36,9 +36,11 @@ struct AVFrame
 		this->size = size;
 		type = 0;
 		timestamp = 0;
+		header_size = 7;
 	}
 
 	std::shared_ptr<uint8_t> buffer; /* 帧数据 */
+	uint8_t  header_size;			 /* 帧类型 */
 	uint32_t size;				     /* 帧大小 */
 	uint8_t  type;				     /* 帧类型 */	
 	uint32_t timestamp;		  	     /* 时间戳 */

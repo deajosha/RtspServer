@@ -5,6 +5,7 @@
 #include "net/Logger.h"
 #include "net/TcpSocket.h"
 #include "net/Timestamp.h"
+#include "share_memory_api.h"
 #include <memory>
 
 using namespace xop;
@@ -32,10 +33,14 @@ void RtspPusher::stop() {
 void RtspPusher::setup() {
 	std::string suffix = get_rtsp_suffix();
 
-	// 创建MediaSession对象并添加H264源
+	// 创建MediaSession对象
 	xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
+	// 添加H264源
 	session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
 	//session->StartMulticast(); 
+
+	// 添加AAC源
+	session->AddSource(xop::channel_1, xop::AACSource::CreateNew());
 	session->SetNotifyCallback([this](xop::MediaSessionId session_id, uint32_t clients) {
 		std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
 
@@ -47,11 +52,47 @@ void RtspPusher::setup() {
 	session_id_ = xop::RtspServer::intance()->AddSession(session);
 
 	// 启动拉流线程
-	pusher_thread_ = std::make_shared<std::thread>(test_thread, session_id_);
+	pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
+	pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
+	//pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
 	pusher_thread_->detach();
+	pusher_thread_audio_->detach();
 }
 
-void RtspPusher::test_thread(xop::MediaSessionId session_id) {
+void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSessionId session_id) {
+	int buf_size = 1024 * 500;
+	size_t read_frame_size = 0;
+	uint8_t* read_frame = nullptr;
+	std::shared_ptr<char> frame_buf(new char[buf_size]);
+
+	if (create_reader(share_file_name.c_str())) {
+		bool end = false;
+		bool find_i_frame = false;
+		while (!end) {
+			read_memory(share_file_name.c_str(), frame_buf.get(), read_frame_size, end);
+			if (!end) {
+				std::shared_ptr<uint8_t> read_buffer(new uint8_t[read_frame_size + 1]);
+				memcpy(read_buffer.get(), frame_buf.get(), read_frame_size);
+
+				xop::AVFrame videoFrame = { 0 };
+				videoFrame.type = 0;
+				videoFrame.size = read_frame_size;
+				videoFrame.timestamp = xop::H264Source::GetTimestamp();
+				videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
+				memcpy(videoFrame.buffer.get(), read_buffer.get(), videoFrame.size);
+
+				RtspServer::intance()->PushFrame(session_id, xop::channel_0, videoFrame);
+
+				//xop::Timer::Sleep(40);
+			}
+		}
+	}
+	else {
+		std::cerr << "创建读共享内存失败" << std::endl;
+	}
+}
+
+void RtspPusher::test_h264_thread(xop::MediaSessionId session_id) {
 
 	// 开启推流线程 并获取media_session
 	int buf_size = 1024 * 500;
@@ -61,11 +102,14 @@ void RtspPusher::test_thread(xop::MediaSessionId session_id) {
 
 	// 开启推流线程 并获取media_session
 	std::shared_ptr<H264File> h264_file(new H264File());
-	if (!h264_file->Open("test.h264")) {
+	if (!h264_file->Open("hik_av.h264")) {
 		printf("open test.h264 failed.\n");
 		return;
 	}
+	// 这是为了操作hik media，跳掉头
+	//h264_file->set_pos(126);
 
+	int i = 0;
 	while (!stop_pusher_) {
 
 		// 读取帧数据
@@ -98,6 +142,50 @@ void RtspPusher::test_thread(xop::MediaSessionId session_id) {
 
 		xop::Timer::Sleep(40);
 	};
+}
+
+void RtspPusher::test_aac_thread(MediaSessionId session_id) {
+	// 开启定时器 读取音频并发送
+	int buf_size = 1024 * 500;
+	int read_frame_size = 0;
+	uint8_t* read_frame = nullptr;
+	std::shared_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
+	AVFrame av_frame(buf_size);
+
+	// 开启推流线程 并获取media_session
+	std::shared_ptr<AacFile> aac_file_handle(new AacFile());
+	if (!aac_file_handle->Open("hik_av.aac")) {
+		printf("读取aac文件失败\n");
+		return;
+	}
+
+	auto fun = [aac_file_handle, av_frame, frame_buf, buf_size, session_id](void) mutable -> bool {
+		int header_size = 7;
+		int read_size = aac_file_handle->read_frame(frame_buf.get(), buf_size, header_size);
+		if (read_size < 0) {
+			return false;
+		}
+
+		av_frame.header_size = header_size;
+		av_frame.size = read_size; 
+		memcpy(av_frame.buffer.get(), frame_buf.get(), read_size); // 仅拷贝aac raw data 拷贝数据
+		av_frame.type = FrameType::AUDIO_FRAME;
+		av_frame.timestamp = AACSource::GetTimestamp();
+
+		// push AAC Frame
+		RtspServer::intance()->PushFrame(session_id, xop::channel_1, av_frame);
+	};
+
+	// 定时器，每40 millseconds发送一次
+	std::shared_ptr<xop::Timer> aac_timer(new xop::Timer(fun, 40));
+	aac_timer->Start(25000, true);
+	while (!stop_pusher_) {
+		
+		//xop::Timer::Sleep(30);
+	}
+
+	aac_file_handle->Close();
+	aac_timer->stop();
 }
 
 H264File::H264File(int buf_size)
@@ -142,7 +230,7 @@ int H264File::ReadFrame(uint8_t* frame, int size)
 
 	rSize = static_cast<int>(fread(frame, 1, size, m_file));
 	bool end = feof(m_file);
-	if (end || (!xop::H264Parser::three_bytes_start_code(frame) && !xop::H264Parser::four_bytes_start_code(frame)))
+	if ((rSize < 0 && end) || (!xop::H264Parser::three_bytes_start_code(frame) && !xop::H264Parser::four_bytes_start_code(frame)))
 		return -1;
 
 	nextStartCode = xop::H264Parser::find_next_start_code(frame + 3, rSize - 3);

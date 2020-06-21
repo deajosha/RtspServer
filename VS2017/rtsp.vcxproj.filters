@@ -236,5 +236,8 @@
     <ClInclude Include="..\src\xop\RtspPusher.h">
       <Filter>源文件\xop</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\xop\aac_parser.h">
+      <Filter>源文件\xop</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
