@@ -61,6 +61,38 @@ namespace xop {
 
 			return -1;
 		}
+
+		static int parser_adts_header(unsigned char* buffer, unsigned long size, unsigned char* &position, struct AdtsHeader* header) {
+			memset(header, 0, sizeof(*header));
+
+			for (unsigned long i = 0; i < size - 7; ++i) {
+				if ((buffer[i] == 0xFF) && ((buffer[i+1] & 0xF0) == 0xF0))
+				{
+					header->id = ((unsigned int)buffer[i+1] & 0x08) >> 3;
+					header->layer = ((unsigned int)buffer[i+1] & 0x06) >> 1;
+					header->protectionAbsent = (unsigned int)buffer[i + 1] & 0x01;
+					header->profile = ((unsigned int)buffer[i + 2] & 0xc0) >> 6;
+					header->samplingFreqIndex = ((unsigned int)buffer[i + 2] & 0x3c) >> 2;
+					header->privateBit = ((unsigned int)buffer[i + 2] & 0x02) >> 1;
+					header->channelCfg = ((((unsigned int)buffer[i + 2] & 0x01) << 2) | (((unsigned int)buffer[i + 3] & 0xc0) >> 6));
+					header->originalCopy = ((unsigned int)buffer[i + 3] & 0x20) >> 5;
+					header->home = ((unsigned int)buffer[i + 3] & 0x10) >> 4;
+					header->copyrightIdentificationBit = ((unsigned int)buffer[i + 3] & 0x08) >> 3;
+					header->copyrightIdentificationStart = (unsigned int)buffer[i + 3] & 0x04 >> 2;
+					header->aacFrameLength = (((((unsigned int)buffer[i + 3]) & 0x03) << 11) |
+						(((unsigned int)buffer[i + 4] & 0xFF) << 3) |
+						((unsigned int)buffer[i + 5] & 0xE0) >> 5);
+					header->adtsBufferFullness = (((unsigned int)buffer[i + 5] & 0x1f) << 6 |
+						((unsigned int)buffer[i + 6] & 0xfc) >> 2);
+					header->numberOfRawDataBlockInFrame = ((unsigned int)buffer[i + 6] & 0x03);
+
+					position = buffer + i;
+					return 0;
+				}
+			}
+
+			return -1;
+		}
 	};
 }
 
