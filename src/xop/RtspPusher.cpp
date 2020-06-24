@@ -200,17 +200,18 @@ void test_real_time(MediaSessionId session_id) {
 			
 			if (0 < video_buffer.size()) {
 				unsigned char* start = video_buffer.data();
-				unsigned char* p = start;
+				unsigned char* current = start;
 				unsigned long size = video_buffer.size();
 				unsigned long frame_size = 0;
 				char start_code_bytes = -1;
 				bool find_start_code = false;
+
 				while (1) {
 					int packet_size = 0;
-					if (xop::H264Parser::three_bytes_start_code(p)) {
+					if (xop::H264Parser::three_bytes_start_code(current)) {
 						start_code_bytes = 3;
 					}
-					if (xop::H264Parser::four_bytes_start_code(p)) {
+					if (xop::H264Parser::four_bytes_start_code(current)) {
 						start_code_bytes = 4;
 					}
 
@@ -221,14 +222,14 @@ void test_real_time(MediaSessionId session_id) {
 						break;
 					}
 
-					unsigned char* next_start_code =  xop::H264Parser::find_next_start_code(p + start_code_bytes, size - start_code_bytes);
+					unsigned char* next_start_code =  xop::H264Parser::find_next_start_code(current + 3, size - 3);
 					if (!next_start_code) {
 						//说明读到不完整的h264帧，保存等待下一次使用
-						video_buffer.erase(video_buffer.begin(), video_buffer.begin() + (p - video_buffer.data()));
+						video_buffer.erase(video_buffer.begin(), video_buffer.begin() + (current - start));
 						break;
 					}
 
-					frame_size = static_cast<int>(next_start_code - p);
+					frame_size = static_cast<int>(next_start_code - current);
 					
 					// 封装rtp包, 发送数据
 					xop::AVFrame videoFrame = { 0 };
@@ -236,16 +237,13 @@ void test_real_time(MediaSessionId session_id) {
 					videoFrame.size = frame_size - start_code_bytes;
 					videoFrame.timestamp = xop::H264Source::GetTimestamp();
 					videoFrame.buffer.reset(new uint8_t[frame_size]);
-					memcpy(videoFrame.buffer.get(), p + start_code_bytes, videoFrame.size);
+					memcpy(videoFrame.buffer.get(), current + start_code_bytes, videoFrame.size);
 
 					// 发送rtp包
 					RtspServer::intance()->PushFrame(session_id, xop::channel_0, videoFrame);
 					// 更新P指针及size大小
-					p = next_start_code;
+					current = next_start_code;
 					size -= frame_size;
-				}
-				if (3 != video_buffer.size()) {
-					video_buffer.clear();
 				}
 			}
 		}
@@ -311,9 +309,7 @@ void RtspPusher::test_h264_thread(xop::MediaSessionId session_id) {
 		printf("open test.h264 failed.\n");
 		return;
 	}
-	// 这是为了操作hik media，跳掉头
-	//h264_file->set_pos(126);
-
+	
 	int i = 0;
 	while (!stop_pusher_) {
 
