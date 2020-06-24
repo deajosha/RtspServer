@@ -101,8 +101,9 @@ public:
 
 	void set_pos(long pos) { if (m_file) { fseek(m_file, pos, SEEK_SET); } }
 	int ReadFrame(uint8_t* frame, int size);
-private:
+
 	FILE *m_file = NULL;
+private:
 	char *m_buf = NULL;
 	int  m_buf_size = 0;
 	int  m_bytes_used = 0;
@@ -129,7 +130,6 @@ private:
 	MediaSessionId session_id_;
 	std::shared_ptr<std::thread> pusher_thread_;
 	std::shared_ptr<std::thread> pusher_thread_audio_;
-
 };
 
 class RtspPusherManager {

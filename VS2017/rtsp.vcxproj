@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -147,6 +147,7 @@
     <ClCompile Include="..\src\net\TcpSocket.cpp" />
     <ClCompile Include="..\src\net\Timer.cpp" />
     <ClCompile Include="..\src\net\Timestamp.cpp" />
+    <ClCompile Include="..\src\whayer\program_stream.cpp" />
     <ClCompile Include="..\src\xop\AACSource.cpp" />
     <ClCompile Include="..\src\xop\DigestAuthentication.cpp" />
     <ClCompile Include="..\src\xop\G711ASource.cpp" />
@@ -159,6 +160,7 @@
     <ClCompile Include="..\src\xop\RtspMessage.cpp" />
     <ClCompile Include="..\src\xop\RtspPusher.cpp" />
     <ClCompile Include="..\src\xop\RtspServer.cpp" />
+    <ClCompile Include="program_stream_api.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\3rdpart\md5\md5.hpp" />
@@ -184,6 +186,9 @@
     <ClInclude Include="..\src\net\ThreadSafeQueue.h" />
     <ClInclude Include="..\src\net\Timer.h" />
     <ClInclude Include="..\src\net\Timestamp.h" />
+    <ClInclude Include="..\src\whayer\program_stream.h" />
+    <ClInclude Include="..\src\whayer\protocol_ps.h" />
+    <ClInclude Include="..\src\whayer\stream_cache.h" />
     <ClInclude Include="..\src\xop\AACSource.h" />
     <ClInclude Include="..\src\xop\aac_parser.h" />
     <ClInclude Include="..\src\xop\DigestAuthentication.h" />
@@ -201,6 +206,7 @@
     <ClInclude Include="..\src\xop\RtspMessage.h" />
     <ClInclude Include="..\src\xop\RtspPusher.h" />
     <ClInclude Include="..\src\xop\RtspServer.h" />
+    <ClInclude Include="program_stream_api.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

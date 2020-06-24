@@ -5,12 +5,18 @@
 #include "net/Logger.h"
 #include "net/TcpSocket.h"
 #include "net/Timestamp.h"
+#include "whayer/program_stream.h"
+#include "whayer/stream_cache.h"
 #include "share_memory_api.h"
 #include <memory>
 
 using namespace xop;
 
 bool RtspPusher::stop_pusher_ = false;
+whayer::media::ProgramStream program_stream;
+whayer::util::StreamCache stream_cache;
+std::shared_ptr<std::thread> raw_data_thread_;
+FILE* save_handle = fopen("hik_real_stream.h264", "ab+");
 
 RtspPusher::RtspPusher(std::string rtsp_url)
 	:pusher_thread_(nullptr)
@@ -40,7 +46,7 @@ void RtspPusher::setup() {
 	//session->StartMulticast(); 
 
 	// 添加AAC源
-	session->AddSource(xop::channel_1, xop::AACSource::CreateNew());
+	//session->AddSource(xop::channel_1, xop::AACSource::CreateNew());
 	session->SetNotifyCallback([this](xop::MediaSessionId session_id, uint32_t clients) {
 		std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
 
@@ -52,38 +58,237 @@ void RtspPusher::setup() {
 	session_id_ = xop::RtspServer::intance()->AddSession(session);
 
 	// 启动拉流线程
-	pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
-	pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
-	//pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
+	//pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
+	//pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
+	pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
 	pusher_thread_->detach();
-	pusher_thread_audio_->detach();
+	//pusher_thread_audio_->detach();
+}
+
+std::vector<unsigned char> audio_buffer;
+std::vector<unsigned char> video_buffer;
+std::vector<unsigned char> ps_buffer;
+
+char find_ps_packet(unsigned char* buffer, unsigned long buffer_size, unsigned char* & position, unsigned long& offset) {
+	unsigned char* start = buffer;
+	unsigned char* current = start;
+	unsigned char* end = buffer + buffer_size - 1;
+
+	bool find_start = false;
+	while (current + 4 <= end) { // 寻找完整的PS包
+		char find_position = program_stream.get_start_code_position(current, buffer_size, 0xBA, current);
+		if (0 != find_position) {
+			if (!find_start) { // ps起始位置未找到,丢掉寻找过的数据
+				position = buffer + buffer_size - 3; 
+				offset = buffer_size - 3; // 缓存最后剩下的3 bytes 数据
+			}
+			else {
+				position = start;
+				offset = 0;
+			}
+	
+			return -1; // 未找到PS包
+		}
+
+		if (!find_start) { // 找到一个PS包的起始位置
+			find_start = true;
+			start = current; // 必须包含起始码，方便第二次寻找
+			std::cout << "find start PS " << *start << std::endl;
+			current += 4;
+			continue;
+		}
+		else {
+			offset = current - start;
+			position = start; // 起始位置必须包含起始码，方便后面寻找
+			std::cout << "buffer start: " << &buffer << " start PS: " << &start[0] << " end PS: " << &current[0] << " ps_size "<< offset  << std::endl;
+
+			return 0; // 找到了完整的PS包
+		}
+	}
+
+	return 0;
+}
+
+void parse_h264(unsigned char* buffer, unsigned long buffer_size, unsigned long & offset) {
+	std::cout << "current buffer size " << buffer_size << std::endl;
+	unsigned char* position = nullptr;
+	char find_packet = find_ps_packet(buffer, buffer_size, position, offset);
+	if (0 == find_packet) {
+		unsigned char* ps_start = position; // 解析PS头
+		char parse_packet = program_stream.parse_packet_header(ps_start, offset, ps_start);
+		if (0 != parse_packet) {
+			std::cout << "解析PS头失败,返回并重新寻找PS包。\n" << std::endl;
+			return;
+		}
+
+		// 跳过系统头和映射流
+		unsigned char* pes_start = ps_start;
+		unsigned char* pes_current = ps_start;
+		unsigned char* pes_end = ps_start + offset -1;
+		bool is_first_pes = false;
+		bool stop = false;
+		while (!stop) // 直接寻找PES包（如音频和视频）
+		{
+			// audio stream number    110x xxxx    [0x000001c0 - 0x000001df]
+			// video stream number    1110 xxxx    [0x000001e0 - 0x000001ef]
+			// 判断下一个起始码是不是音视频类型
+			char find_result = program_stream.get_pes_start_code(pes_current, pes_end - pes_current + 1, 0xC0, 0xEF, pes_current); // 00 00 01 E0    VIDEO_ID
+			if (0 == find_result || is_first_pes)
+			{
+				if (find_result != 0 && is_first_pes)
+				{
+					pes_current = pes_end; // 未找到下一个完整的起始码，则跳转到PS包结束位置
+					stop = true;
+				}
+
+				if (is_first_pes)
+				{
+					unsigned long pes_packet_length = pes_current - pes_start + 1; // 计算PES包的整个长度
+					if (pes_packet_length < 12) {
+						printf("PES包读取结束\n");
+						break;
+					}
+					find_result = program_stream.parse_pes_packet_header(pes_start, pes_packet_length, pes_start); // 解析PES包头信息
+					if (0 != find_result) {
+						printf("解析PES包出错，退出，进入下一PS包寻找\n");
+						break;
+					}
+
+					unsigned long pes_raw_length = 0;
+					unsigned long pes_left_length = pes_current - pes_start;
+					find_result = program_stream.parse_pes_packet(nullptr, pes_left_length, pes_raw_length);
+					if (whayer::protocol::ps_const::kAudioStream == program_stream.get_pes_payload_type()) {
+						printf("PES audio 包\n");
+
+						//audio_buffer.insert(audio_buffer.begin() + audio_buffer.size() - 1, ps_current, ps_current + pes_raw_length);
+					}
+					else if (whayer::protocol::ps_const::kVideoStream == program_stream.get_pes_payload_type()) {
+						// 测试写入文件
+						//fwrite(pes_start, 1, pes_raw_length, save_handle); 
+						video_buffer.insert(video_buffer.end(), pes_start, pes_start + pes_raw_length);
+					}
+				}
+				else {
+					is_first_pes = true;
+				}
+
+				pes_start = pes_current; // 保存PES包的起始地址
+				pes_current += 4;
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+}
+
+void test_real_time(MediaSessionId session_id) {
+	whayer::util::PsPacketObject ps_packet;
+	while (1) {
+		if (stream_cache.read_cache(ps_packet)) {
+
+			ps_buffer.insert(ps_buffer.end(), ps_packet.buffer, ps_packet.buffer + ps_packet.buffer_size);
+			
+			// 按帧解析h264流 
+			unsigned long offset = 0; // 计算下一个PS的位置
+			parse_h264(ps_buffer.data(), ps_buffer.size(), offset);
+
+			if (0 < offset) { // 移动指针
+				ps_buffer.erase(ps_buffer.begin(), ps_buffer.begin() + offset);
+			}
+			
+			if (0 < video_buffer.size()) {
+				unsigned char* start = video_buffer.data();
+				unsigned char* p = start;
+				unsigned long size = video_buffer.size();
+				unsigned long frame_size = 0;
+				char start_code_bytes = -1;
+				bool find_start_code = false;
+				while (1) {
+					int packet_size = 0;
+					if (xop::H264Parser::three_bytes_start_code(p)) {
+						start_code_bytes = 3;
+					}
+					if (xop::H264Parser::four_bytes_start_code(p)) {
+						start_code_bytes = 4;
+					}
+
+					if (-1 == start_code_bytes) {
+						// 说明读到的不是h264的帧，丢掉已读过的数据
+						unsigned long remove_length = size - 3;
+						video_buffer.erase(video_buffer.begin(), video_buffer.begin() + remove_length);			
+						break;
+					}
+
+					unsigned char* next_start_code =  xop::H264Parser::find_next_start_code(p + start_code_bytes, size - start_code_bytes);
+					if (!next_start_code) {
+						//说明读到不完整的h264帧，保存等待下一次使用
+						video_buffer.erase(video_buffer.begin(), video_buffer.begin() + (p - video_buffer.data()));
+						break;
+					}
+
+					frame_size = static_cast<int>(next_start_code - p);
+					
+					// 封装rtp包, 发送数据
+					xop::AVFrame videoFrame = { 0 };
+					videoFrame.type = 0;
+					videoFrame.size = frame_size - start_code_bytes;
+					videoFrame.timestamp = xop::H264Source::GetTimestamp();
+					videoFrame.buffer.reset(new uint8_t[frame_size]);
+					memcpy(videoFrame.buffer.get(), p + start_code_bytes, videoFrame.size);
+
+					// 发送rtp包
+					RtspServer::intance()->PushFrame(session_id, xop::channel_0, videoFrame);
+					// 更新P指针及size大小
+					p = next_start_code;
+					size -= frame_size;
+				}
+				if (3 != video_buffer.size()) {
+					video_buffer.clear();
+				}
+			}
+		}
+		else {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
+
 }
 
 void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSessionId session_id) {
+	
 	int buf_size = 1024 * 500;
-	size_t read_frame_size = 0;
+	unsigned long read_frame_size = 0;
 	uint8_t* read_frame = nullptr;
-	std::shared_ptr<char> frame_buf(new char[buf_size]);
-
+	
 	if (create_reader(share_file_name.c_str())) {
 		bool end = false;
 		bool find_i_frame = false;
+		bool find_ps_packet = false;
+		std::vector<unsigned char> recive_buffer;
+		//FILE* save_handle = fopen("camera_214.ps", "ab+");
+
+		raw_data_thread_ = std::make_shared<std::thread>(test_real_time, session_id);
+		raw_data_thread_->detach();
+		bool find_ps_frame = false;
+		unsigned char previous_bytes[3] = { 0xFF };
+		
 		while (!end) {
-			read_memory(share_file_name.c_str(), frame_buf.get(), read_frame_size, end);
+			std::shared_ptr<unsigned char> frame_buf(new unsigned char[buf_size]);
+			unsigned char* p = frame_buf.get();
+			read_memory(share_file_name.c_str(), p, read_frame_size, end);
 			if (!end) {
-				std::shared_ptr<uint8_t> read_buffer(new uint8_t[read_frame_size + 1]);
-				memcpy(read_buffer.get(), frame_buf.get(), read_frame_size);
+				// 验证同步的媒体流是否正确
+				//size_t dd = fwrite(p, 1, read_frame_size, save_handle);
+				//std::cout << "write size: " << read_frame_size << std::endl;
 
-				xop::AVFrame videoFrame = { 0 };
-				videoFrame.type = 0;
-				videoFrame.size = read_frame_size;
-				videoFrame.timestamp = xop::H264Source::GetTimestamp();
-				videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
-				memcpy(videoFrame.buffer.get(), read_buffer.get(), videoFrame.size);
-
-				RtspServer::intance()->PushFrame(session_id, xop::channel_0, videoFrame);
-
-				//xop::Timer::Sleep(40);
+				stream_cache.write_cache(p, read_frame_size);
+			}
+			else {
+				fclose(save_handle);
+				//stop_read_raw_buffer = true;
+				break;
 			}
 		}
 	}
@@ -112,7 +317,7 @@ void RtspPusher::test_h264_thread(xop::MediaSessionId session_id) {
 	int i = 0;
 	while (!stop_pusher_) {
 
-		// 读取帧数据
+		// 按帧读取并按帧打包发送rtp
 		read_frame_size = h264_file->ReadFrame(frame_buf.get(), buf_size);
 
 		if (read_frame_size < 0) {
@@ -174,6 +379,7 @@ void RtspPusher::test_aac_thread(MediaSessionId session_id) {
 
 		// push AAC Frame
 		RtspServer::intance()->PushFrame(session_id, xop::channel_1, av_frame);
+		return true;
 	};
 
 	// 定时器，每40 millseconds发送一次
