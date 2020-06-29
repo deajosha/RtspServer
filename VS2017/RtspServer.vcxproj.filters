@@ -251,8 +251,5 @@
     <ClInclude Include="..\src\whayer\protocol_ps.h">
       <Filter>源文件\whayer</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\whayer\stream_cache.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>
