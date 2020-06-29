@@ -6,15 +6,14 @@
 #include "net/TcpSocket.h"
 #include "net/Timestamp.h"
 #include "whayer/program_stream.h"
-#include "whayer/stream_cache.h"
 #include "share_memory_api.h"
+#include "share_memory_type.h"
 #include <memory>
 
 using namespace xop;
 
 bool RtspPusher::stop_pusher_ = false;
 whayer::media::ProgramStream program_stream;
-whayer::util::StreamCache stream_cache;
 std::shared_ptr<std::thread> raw_data_thread_;
 std::shared_ptr<std::thread> audio_timer_thread_;
 
@@ -121,7 +120,51 @@ char find_ps_packet(unsigned char* buffer, unsigned long buffer_size, unsigned c
 	return 0;
 }
 
-void parse_h264_aac(unsigned char* buffer, unsigned long buffer_size, unsigned long & offset) {
+void packet_acc_to_rtp(MediaSessionId session_id) {
+	if (0 < audio_buffer.size()) { // adts头长度是7个字节
+		int header_size = 7;
+		unsigned char* current = audio_buffer.data();
+		unsigned long size = audio_buffer.size();
+
+		struct xop::AdtsHeader adst_header;
+
+		// 解析adts头
+		int index = Acc_Parser::parser_adts_header(current, size, current, &adst_header); // 处理起始7位字节
+		if (-1 == index) { // 未找到adts头，仅保留最后6位字节
+			audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + size - 6);
+		}
+		else {
+			if (0 == adst_header.protectionAbsent) { // 跳过多余的2字节
+				header_size = 9;
+			}
+		}
+
+		if (adst_header.aacFrameLength <= size && 0 < adst_header.aacFrameLength) {
+			// 仅拷贝raw data
+			uint32_t raw_size = adst_header.aacFrameLength - header_size;
+			current += header_size; // 跳过头
+
+			AVFrame audio_frame = { 0 };
+
+			audio_frame.header_size = header_size;
+			audio_frame.size = raw_size;
+			audio_frame.buffer.reset(new uint8_t[raw_size]);
+			audio_frame.type = FrameType::AUDIO_FRAME;
+			audio_frame.timestamp = AACSource::GetTimestamp();
+			memcpy(audio_frame.buffer.get(), current, raw_size); // 仅拷贝aac raw data 拷贝数据
+
+			// push AAC Frame
+			RtspServer::intance()->PushFrame(session_id, xop::channel_1, audio_frame);
+
+			audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + adst_header.aacFrameLength);
+
+			std::lock_guard<std::mutex> lock(audio_mutex);
+
+		}
+	}
+}
+
+void parse_h264_aac(unsigned char* buffer, unsigned long buffer_size, unsigned long & offset, MediaSessionId session_id) {
 	std::cout << "current buffer size " << buffer_size << std::endl;
 	unsigned char* position = nullptr;
 	char find_packet = find_ps_packet(buffer, buffer_size, position, offset);
@@ -173,6 +216,8 @@ void parse_h264_aac(unsigned char* buffer, unsigned long buffer_size, unsigned l
 						// 测试写入文件
 						//fwrite(pes_start, 1, pes_raw_length, aac_handle); 
 						audio_buffer.insert(audio_buffer.end(), pes_start, pes_start + pes_raw_length);
+						// 此处是否考虑直接封包
+						packet_acc_to_rtp(session_id);
 					}
 					else if (whayer::protocol::ps_const::kVideoStream == program_stream.get_pes_payload_type()) {
 						// 测试写入文件
@@ -201,69 +246,22 @@ void audio_timer_function() {
 	aac_timer->Start(5000, true);
 }
 
-void test_real_time(MediaSessionId session_id) {
-	whayer::util::PsPacketObject ps_packet;
-	audio_timer_thread_ = std::make_shared<std::thread>(audio_timer_function);
-	audio_timer_thread_->detach();
+void test_real_time(const char* share_file_name, MediaSessionId session_id) {
+	whayer::share_memory::PsPacketObject ps_packet;
+	//audio_timer_thread_ = std::make_shared<std::thread>(audio_timer_function);
+	//audio_timer_thread_->detach();
 
 	while (1) {
-		if (stream_cache.read_cache(ps_packet)) {
+		if (reader_pop_cache(share_file_name, ps_packet)) {
 
-			ps_buffer.insert(ps_buffer.end(), ps_packet.buffer, ps_packet.buffer + ps_packet.buffer_size);
+			ps_buffer.insert(ps_buffer.end(), ps_packet.buffer.get(), ps_packet.buffer.get() + ps_packet.buffer_size);
 			
 			// 按帧解析h264流 
 			unsigned long offset = 0; // 计算下一个PS的位置
-			parse_h264_aac(ps_buffer.data(), ps_buffer.size(), offset);
+			parse_h264_aac(ps_buffer.data(), ps_buffer.size(), offset, session_id);
 
 			if (0 < offset) { // 移动指针
 				ps_buffer.erase(ps_buffer.begin(), ps_buffer.begin() + offset);
-			}
-			
-			// 封装rtp音频
-			if (play_audio) {
-				// 执行audio
-				if (0 < audio_buffer.size()) { // adts头长度是7个字节
-					int header_size = 7;
-					unsigned char* current = audio_buffer.data();
-					unsigned long size = audio_buffer.size();
-
-					struct xop::AdtsHeader adst_header;
-
-					// 解析adts头
-					int index = Acc_Parser::parser_adts_header(current, size, current, &adst_header); // 处理起始7位字节
-					if (-1 == index){ // 未找到adts头，仅保留最后6位字节
-						audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + size -6);
-					}
-					else {
-						if (0 == adst_header.protectionAbsent) { // 跳过多余的2字节
-							header_size = 9;
-						}
-					}
-
-					if (adst_header.aacFrameLength <= size && 0 < adst_header.aacFrameLength) {
-						// 仅拷贝raw data
-						uint32_t raw_size = adst_header.aacFrameLength - header_size;
-						current += header_size; // 跳过头
-						
-						AVFrame audio_frame = {0};
-
-						audio_frame.header_size = header_size;
-						audio_frame.size = raw_size;
-						audio_frame.buffer.reset(new uint8_t[raw_size]);
-						audio_frame.type = FrameType::AUDIO_FRAME;
-						audio_frame.timestamp = AACSource::GetTimestamp();
-						memcpy(audio_frame.buffer.get(), current, raw_size); // 仅拷贝aac raw data 拷贝数据
-
-						// push AAC Frame
-						RtspServer::intance()->PushFrame(session_id, xop::channel_1, audio_frame);
-
-						audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + adst_header.aacFrameLength);
-
-						std::lock_guard<std::mutex> lock(audio_mutex);
-						
-					}
-				}
-				play_audio = false;
 			}
 
 			// 封装rtp视频
@@ -319,37 +317,29 @@ void test_real_time(MediaSessionId session_id) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
-
 }
 
 void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSessionId session_id) {
-	
-	int buf_size = 1024 * 500;
-	unsigned long read_frame_size = 0;
-	uint8_t* read_frame = nullptr;
-	
-	if (create_reader(share_file_name.c_str())) {
+		
+	if (create_reader(share_file_name.c_str(), true, [](char code)-> void {
+		std::cout << code << std::endl;
+		std::cout << "超时出错" << std::endl;
+	})) {
 		bool end = false;
-		bool find_i_frame = false;
-		bool find_ps_packet = false;
-		std::vector<unsigned char> recive_buffer;
 		//FILE* ps_handle = fopen("camera_214.ps", "ab+");
 
-		raw_data_thread_ = std::make_shared<std::thread>(test_real_time, session_id);
+		raw_data_thread_ = std::make_shared<std::thread>(test_real_time, share_file_name.c_str(), session_id);
 		raw_data_thread_->detach();
-		bool find_ps_frame = false;
-		unsigned char previous_bytes[3] = { 0xFF };
-		
+		unsigned long memory_buffer_size = 0;
+		std::unique_ptr<unsigned char> memory_buffer;
 		while (!end) {
-			std::shared_ptr<unsigned char> frame_buf(new unsigned char[buf_size]);
-			unsigned char* p = frame_buf.get();
-			read_memory(share_file_name.c_str(), p, read_frame_size, end);
+			read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
 			if (!end) {
 				// 验证同步的媒体流是否正确
-				//size_t dd = fwrite(p, 1, read_frame_size, ps_handle);
+				//size_t dd = fwrite(memory_buffer.get(), 1, read_frame_size, ps_handle);
 				//std::cout << "write size: " << read_frame_size << std::endl;
 
-				stream_cache.write_cache(p, read_frame_size);
+				reader_push_cache(share_file_name.c_str(), memory_buffer.get(), memory_buffer_size);
 			}
 			else {
 				fclose(h264_handle);

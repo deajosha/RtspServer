@@ -160,7 +160,6 @@
     <ClCompile Include="..\src\xop\RtspMessage.cpp" />
     <ClCompile Include="..\src\xop\RtspPusher.cpp" />
     <ClCompile Include="..\src\xop\RtspServer.cpp" />
-    <ClCompile Include="program_stream_api.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\3rdpart\md5\md5.hpp" />
@@ -206,7 +205,6 @@
     <ClInclude Include="..\src\xop\RtspMessage.h" />
     <ClInclude Include="..\src\xop\RtspPusher.h" />
     <ClInclude Include="..\src\xop\RtspServer.h" />
-    <ClInclude Include="program_stream_api.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
