@@ -122,7 +122,10 @@ public:
 	static void test_aac_thread(MediaSessionId session_id);
 	static void test_reader_thread(const std::string share_file_name, MediaSessionId session_id);
 	MediaSessionId get_session_id() { return session_id_; }
-
+	
+	bool request_stream_share_memory(unsigned int memory_size); // 请求实时流共享内存
+	bool request_play_real_stream(); // 请求播放实时流
+	void request_stop_real_stream(); // 请求停止实时流
 private:
 	friend class RtspConnection;
 	
@@ -134,7 +137,7 @@ private:
 
 class RtspPusherManager {
 public:
-	static std::shared_ptr<RtspPusherManager> instance();
+	static RtspPusherManager* instance();
 
 	void add_pusher(const std::string &rtsp_url, const std::string& url_suffix);
 	void remove_pusher(const std::string &url_suffix);

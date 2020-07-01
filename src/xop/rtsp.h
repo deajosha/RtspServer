@@ -21,6 +21,7 @@ struct RtspUrlInfo
 	std::string ip;
 	uint16_t port;
 	std::string suffix;
+	int stream_type; // 流类型，1:主码流 2: 辅码流
 };
 
 class Rtsp : public std::enable_shared_from_this<Rtsp>
@@ -54,6 +55,10 @@ public:
 		return rtsp_url_info_.suffix;
 	}
 
+	virtual int get_rtsp_stream_type() {
+		return rtsp_url_info_.stream_type;
+	}
+
 	bool parseRtspUrl(std::string url)
 	{
 		char ip[100] = { 0 };
@@ -80,10 +85,21 @@ public:
 			//LOG("%s was illegal.\n", url.c_str());
 			return false;
 		}
+		
+		int stream_type_value = 1;
+		std::size_t stream_type_pos = url.find("stream_type=");
+		if (stream_type_pos != std::string::npos) {
+			
+			std::string stream_type = url.substr(stream_type_pos+1, stream_type_pos + 2);
+			if (1 == sscanf_s(stream_type.c_str(), "%d", &stream_type_value, sizeof(char))) {
+				stream_type_value = stream_type_value != 1 ? 2 : stream_type_value;
+			}
+		}
 
 		rtsp_url_info_.ip = ip;
 		rtsp_url_info_.suffix = suffix;
 		rtsp_url_info_.url = url;
+		rtsp_url_info_.stream_type = stream_type_value;
 		return true;
 	}
 

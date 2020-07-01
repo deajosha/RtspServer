@@ -20,14 +20,14 @@ RtspServer::~RtspServer()
 	
 }
 
-std::shared_ptr<RtspServer> RtspServer::intance()
+RtspServer* RtspServer::intance()
 {
 	if (nullptr == RtspServer::rtsp_server_) {
 		event_loop_ = std::make_shared<EventLoop>();
 		rtsp_server_ = std::shared_ptr<RtspServer>(new RtspServer(event_loop_.get()));
 	}
 	
-	return rtsp_server_;
+	return rtsp_server_.get();
 }
 
 MediaSessionId RtspServer::AddSession(MediaSession* session)

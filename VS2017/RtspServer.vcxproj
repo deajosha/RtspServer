@@ -86,12 +86,12 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\3rdpart;D:\code\repos\Whayer\ShareMemory\os\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\3rdpart;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>D:\code\repos\Whayer\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>ShareMemory.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libconfig++.lib;jsoncpp.lib;StreamShareMemory.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -147,6 +147,7 @@
     <ClCompile Include="..\src\net\TcpSocket.cpp" />
     <ClCompile Include="..\src\net\Timer.cpp" />
     <ClCompile Include="..\src\net\Timestamp.cpp" />
+    <ClCompile Include="..\src\whayer\config_api.cpp" />
     <ClCompile Include="..\src\whayer\program_stream.cpp" />
     <ClCompile Include="..\src\xop\AACSource.cpp" />
     <ClCompile Include="..\src\xop\DigestAuthentication.cpp" />
@@ -162,7 +163,20 @@
     <ClCompile Include="..\src\xop\RtspServer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\src\3rdpart\httplib\httplib.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\allocator.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\assertions.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\config.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\forwards.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\json.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\json_features.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\reader.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\value.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\version.h" />
+    <ClInclude Include="..\src\3rdpart\jsoncpp\writer.h" />
     <ClInclude Include="..\src\3rdpart\md5\md5.hpp" />
+    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_api.h" />
+    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_type.h" />
     <ClInclude Include="..\src\net\Acceptor.h" />
     <ClInclude Include="..\src\net\BufferReader.h" />
     <ClInclude Include="..\src\net\BufferWriter.h" />
@@ -185,6 +199,7 @@
     <ClInclude Include="..\src\net\ThreadSafeQueue.h" />
     <ClInclude Include="..\src\net\Timer.h" />
     <ClInclude Include="..\src\net\Timestamp.h" />
+    <ClInclude Include="..\src\whayer\config_api.h" />
     <ClInclude Include="..\src\whayer\program_stream.h" />
     <ClInclude Include="..\src\whayer\protocol_ps.h" />
     <ClInclude Include="..\src\xop\AACSource.h" />
@@ -204,6 +219,9 @@
     <ClInclude Include="..\src\xop\RtspMessage.h" />
     <ClInclude Include="..\src\xop\RtspPusher.h" />
     <ClInclude Include="..\src\xop\RtspServer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\3rdpart\libconfig\libconfig.h++" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

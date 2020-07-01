@@ -397,7 +397,7 @@ void RtspConnection::HandleCmdTeardown()
 	HandleClose();
 
 	// 判断个数
-	
+	RtspPusherManager::instance()->remove_pusher(rtsp_request_->GetRtspUrlSuffix());
 }
 
 void RtspConnection::HandleCmdGetParamter()

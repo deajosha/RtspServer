@@ -19,7 +19,7 @@ class RtspConnection;
 class RtspServer : public Rtsp, public TcpServer
 {
 public:   
-	static std::shared_ptr<RtspServer> intance();
+	static RtspServer* intance();
 	
 	~RtspServer();
 

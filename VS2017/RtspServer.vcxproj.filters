@@ -28,6 +28,18 @@
     <Filter Include="源文件\whayer">
       <UniqueIdentifier>{a4bb1db6-264a-4db2-8546-a6161fb7537f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\3rdpart\jsoncpp">
+      <UniqueIdentifier>{b69bc979-4c5b-40b2-a815-2e72063f0576}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\3rdpart\httplib">
+      <UniqueIdentifier>{390d385a-cdf5-4376-88b9-85adeba4ac88}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\3rdpart\stream_share_memory">
+      <UniqueIdentifier>{2c107aec-a62f-4686-8383-f3146e204f26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\3rdpart\libconfig">
+      <UniqueIdentifier>{3e18d8ac-6d18-4d2e-8fe9-7382d9f89fe6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\xop\AACSource.cpp">
@@ -121,6 +133,9 @@
       <Filter>源文件\xop</Filter>
     </ClCompile>
     <ClCompile Include="..\src\whayer\program_stream.cpp">
+      <Filter>源文件\whayer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\whayer\config_api.cpp">
       <Filter>源文件\whayer</Filter>
     </ClCompile>
   </ItemGroup>
@@ -251,5 +266,52 @@
     <ClInclude Include="..\src\whayer\protocol_ps.h">
       <Filter>源文件\whayer</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\allocator.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\assertions.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\config.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\forwards.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\json.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\json_features.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\reader.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\value.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\version.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\jsoncpp\writer.h">
+      <Filter>源文件\3rdpart\jsoncpp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\httplib\httplib.h">
+      <Filter>源文件\3rdpart\httplib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_api.h">
+      <Filter>源文件\3rdpart\stream_share_memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_type.h">
+      <Filter>源文件\3rdpart\stream_share_memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\whayer\config_api.h">
+      <Filter>源文件\whayer</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\3rdpart\libconfig\libconfig.h++">
+      <Filter>源文件\3rdpart\libconfig</Filter>
+    </None>
   </ItemGroup>
 </Project>

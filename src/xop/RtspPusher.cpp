@@ -6,8 +6,14 @@
 #include "net/TcpSocket.h"
 #include "net/Timestamp.h"
 #include "whayer/program_stream.h"
-#include "share_memory_api.h"
-#include "share_memory_type.h"
+#include "3rdpart/jsoncpp/json.h"
+#include "3rdpart/stream_share_memory/share_memory_type.h"
+#include "3rdpart/stream_share_memory/share_memory_api.h"
+#include "whayer/config_api.h"
+
+#define WIN32_LEAN_AND_MEAN
+#include "3rdpart/httplib/httplib.h"
+
 #include <memory>
 
 using namespace xop;
@@ -38,35 +44,58 @@ void RtspPusher::stop() {
 		stop_pusher_ = true;
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
+
+	request_stop_real_stream(); // 请求停止实时流
 }
 
 void RtspPusher::setup() {
 	std::string suffix = get_rtsp_suffix();
 
-	// 创建MediaSession对象
-	xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
-	// 添加H264源
-	session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
-	//session->StartMulticast(); 
-
-	// 添加AAC源
-	session->AddSource(xop::channel_1, xop::AACSource::CreateNew());
-	session->SetNotifyCallback([this](xop::MediaSessionId session_id, uint32_t clients) {
-		std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
-
-		if (0 == clients) { // 是否释放推流通道
-			RtspPusherManager::instance()->remove_pusher(session_id);
-		}
+	bool result = create_reader(suffix.c_str(), true, [](char code)-> void {
+		std::cout << code << std::endl;
+		std::cout << "超时出错" << std::endl;
 	});
 
-	session_id_ = xop::RtspServer::intance()->AddSession(session);
+	if (!result) {
+		return;
+	}
 
-	// 启动拉流线程
-	//pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
-	//pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
-	pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
-	pusher_thread_->detach();
-	//pusher_thread_audio_->detach();
+	unsigned int memory_size = 200 * 1024;
+	if (request_stream_share_memory(memory_size) && init_reader(suffix.c_str())) {
+		if (request_play_real_stream()) { // 请求实时流
+			// 创建MediaSession对象
+			xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
+			// 添加H264源
+			session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
+			//session->StartMulticast(); 
+
+			// 添加AAC源
+			//session->AddSource(xop::channel_1, xop::AACSource::CreateNew());
+			session->SetNotifyCallback([this](xop::MediaSessionId session_id, uint32_t clients) {
+				std::cout << "Rtsp Client 连接个数: " << clients << std::endl;
+
+				if (0 == clients) { // 是否释放推流通道, 通过停止命令释放推流通道？？
+					RtspPusherManager::instance()->remove_pusher(session_id);
+				}
+			});
+
+			session_id_ = xop::RtspServer::intance()->AddSession(session);
+
+			// 启动拉流线程
+			//pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
+			pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
+			//pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
+			pusher_thread_->detach();
+			//pusher_thread_audio_->detach();
+		}
+		else {
+			std::cout << "请求失败" << std::endl;
+			// rtsp 请求播放失败，停止共享内存
+			stop_reader(suffix.c_str());
+			// TODO:: 停止rtsp协商
+
+		}
+	}
 }
 
 std::vector<unsigned char> audio_buffer;
@@ -319,39 +348,136 @@ void test_real_time(const char* share_file_name, MediaSessionId session_id) {
 	}
 }
 
-void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSessionId session_id) {
-		
-	if (create_reader(share_file_name.c_str(), true, [](char code)-> void {
-		std::cout << code << std::endl;
-		std::cout << "超时出错" << std::endl;
-	})) {
-		bool end = false;
-		//FILE* ps_handle = fopen("camera_214.ps", "ab+");
+// 请求实时流共享内存
+bool RtspPusher::request_stream_share_memory(unsigned int memory_size) {
+	unsigned int rest_server_port = whayer::access_gateway::ConfigApi::instance()->get_rest_server_port();
+	char* rest_server_address = whayer::access_gateway::ConfigApi::instance()->get_rest_server_address();
 
-		raw_data_thread_ = std::make_shared<std::thread>(test_real_time, share_file_name.c_str(), session_id);
-		raw_data_thread_->detach();
-		unsigned long memory_buffer_size = 0;
-		std::unique_ptr<unsigned char> memory_buffer;
-		while (!end) {
-			read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
-			if (!end) {
-				// 验证同步的媒体流是否正确
-				//size_t dd = fwrite(memory_buffer.get(), 1, read_frame_size, ps_handle);
-				//std::cout << "write size: " << read_frame_size << std::endl;
+	httplib::Client client(rest_server_address, rest_server_port);
 
-				reader_push_cache(share_file_name.c_str(), memory_buffer.get(), memory_buffer_size);
-			}
-			else {
-				fclose(h264_handle);
-				fclose(aac_handle);
-				//fclose(ps_handle);
-				//stop_read_raw_buffer = true;
-				break;
-			}
+	Json::Value param;
+	param["device_id"] = get_rtsp_suffix();
+	param["memory_size"] = memory_size;
+
+	Json::StreamWriterBuilder builder;
+	const std::string request_play = Json::writeString(builder, param);
+
+	auto response = client.Post("/media/real-stream/share-memory", request_play, "application/json");
+	if (response && response->status == 200) {
+		std::string error;
+		unsigned long raw_json_length = response->body.size();
+		Json::CharReaderBuilder builder;
+		Json::Value data;
+		const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+		if (!reader->parse(response->body.c_str(), response->body.c_str() + raw_json_length, &data, &error)) {
+			std::cout << "error" << std::endl;
+			return false;
 		}
+
+		std::string message = data["message"].asString(); // 转换成std::string格式
+		std::cout << message << std::endl;
 	}
 	else {
-		std::cerr << "创建读共享内存失败" << std::endl;
+		std::cout << "请求失败" << std::endl;
+		return false;
+	}
+
+	return true;
+}
+// 请求播放实时流
+bool RtspPusher::request_play_real_stream() {
+	unsigned int rest_server_port = whayer::access_gateway::ConfigApi::instance()->get_rest_server_port();
+	char* rest_server_address = whayer::access_gateway::ConfigApi::instance()->get_rest_server_address();
+
+	httplib::Client client(rest_server_address, rest_server_port);
+
+	Json::Value param;
+	param["device_id"] = get_rtsp_suffix();
+	param["stream_type"] = get_rtsp_stream_type();
+
+	Json::StreamWriterBuilder builder;
+	const std::string request_play = Json::writeString(builder, param);
+
+	auto response = client.Post("/media/real-stream/play", request_play, "application/json");
+	if (response && response->status == 200) {
+		std::string error;
+		unsigned long raw_json_length = response->body.size();
+		Json::CharReaderBuilder builder;
+		Json::Value data;
+		const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+		if (!reader->parse(response->body.c_str(), response->body.c_str() + raw_json_length, &data, &error)) {
+			std::cout << "error" << std::endl;
+			return false;
+		}
+
+		std::string message = data["message"].asString(); // 转换成std::string格式
+		std::cout << message << std::endl;
+	}
+	else {
+		std::cout << "请求失败" << std::endl;
+		return false;
+	}
+
+	return true;
+}
+
+// 请求播放实时流
+void RtspPusher::request_stop_real_stream() {
+	unsigned int rest_server_port = whayer::access_gateway::ConfigApi::instance()->get_rest_server_port();
+	char* rest_server_address = whayer::access_gateway::ConfigApi::instance()->get_rest_server_address();
+
+	httplib::Client client(rest_server_address, rest_server_port);
+	Json::Value param;
+	param["device_id"] = get_rtsp_suffix();
+
+	Json::StreamWriterBuilder builder;
+	const std::string request_play = Json::writeString(builder, param);
+
+	auto response = client.Post("/media/real-stream/stop", request_play, "application/json");
+	if (response && response->status == 200) {
+		std::string error;
+		unsigned long raw_json_length = response->body.size();
+		Json::CharReaderBuilder builder;
+		Json::Value data;
+		const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+		if (!reader->parse(response->body.c_str(), response->body.c_str() + raw_json_length, &data, &error)) {
+			std::cout << "error" << std::endl;
+			return;
+		}
+
+		std::string message = data["message"].asString(); // 转换成std::string格式
+		std::cout << message << std::endl;
+	}
+	else {
+		std::cout << "请求失败" << std::endl;
+	}
+}
+
+// 启动读线程
+void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSessionId session_id) {
+
+	bool end = false;
+	//FILE* ps_handle = fopen("camera_214.ps", "ab+");
+
+	raw_data_thread_ = std::make_shared<std::thread>(test_real_time, share_file_name.c_str(), session_id);
+	raw_data_thread_->detach();
+	unsigned long memory_buffer_size = 0;
+	std::unique_ptr<unsigned char> memory_buffer;
+	while (!end) {
+		read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
+		if (!end) {
+			// 验证同步的媒体流是否正确
+			//size_t dd = fwrite(memory_buffer.get(), 1, read_frame_size, ps_handle);
+			//std::cout << "write size: " << read_frame_size << std::endl;
+			reader_push_cache(share_file_name.c_str(), memory_buffer.get(), memory_buffer_size);
+		}
+		else {
+			fclose(h264_handle);
+			fclose(aac_handle);
+			//fclose(ps_handle);
+			//stop_read_raw_buffer = true;
+			break;
+		}
 	}
 }
 
@@ -365,7 +491,7 @@ void RtspPusher::test_h264_thread(xop::MediaSessionId session_id) {
 
 	// 开启推流线程 并获取media_session
 	std::shared_ptr<H264File> h264_file(new H264File());
-	if (!h264_file->Open("hik_av.h264")) {
+	if (!h264_file->Open("recv1.h264")) {
 		printf("open test.h264 failed.\n");
 		return;
 	}
@@ -512,8 +638,8 @@ int H264File::ReadFrame(uint8_t* frame, int size)
 
 std::shared_ptr<RtspPusherManager> RtspPusherManager::rtsp_pusher_manager_(new RtspPusherManager());
 
-std::shared_ptr<RtspPusherManager> RtspPusherManager::instance() {
-	return rtsp_pusher_manager_;
+RtspPusherManager* RtspPusherManager::instance() {
+	return rtsp_pusher_manager_.get();
 }
 
 void RtspPusherManager::add_pusher(const std::string &rtsp_url, const std::string& url_suffix) {
