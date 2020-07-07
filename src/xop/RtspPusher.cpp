@@ -7,8 +7,7 @@
 #include "net/Timestamp.h"
 #include "whayer/program_stream.h"
 #include "3rdpart/jsoncpp/json.h"
-#include "3rdpart/stream_share_memory/share_memory_type.h"
-#include "3rdpart/stream_share_memory/share_memory_api.h"
+#include "stream_share_memory_api.h"
 #include "whayer/config_api.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -17,6 +16,7 @@
 #include <memory>
 
 using namespace xop;
+using namespace whayer::access_gateway;
 
 bool RtspPusher::stop_pusher_ = false;
 whayer::media::ProgramStream program_stream;
@@ -51,7 +51,7 @@ void RtspPusher::stop() {
 void RtspPusher::setup() {
 	std::string suffix = get_rtsp_suffix();
 
-	bool result = create_reader(suffix.c_str(), true, [](char code)-> void {
+	bool result = stream_share_memory::create_reader(suffix.c_str(), true, [](char code)-> void {
 		std::cout << code << std::endl;
 		std::cout << "超时出错" << std::endl;
 	});
@@ -61,7 +61,7 @@ void RtspPusher::setup() {
 	}
 
 	unsigned int memory_size = 200 * 1024;
-	if (request_stream_share_memory(memory_size) && init_reader(suffix.c_str())) {
+	if (request_stream_share_memory(memory_size) && stream_share_memory::init_reader(suffix.c_str())) {
 		if (request_play_real_stream()) { // 请求实时流
 			// 创建MediaSession对象
 			xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
@@ -83,15 +83,15 @@ void RtspPusher::setup() {
 
 			// 启动拉流线程
 			//pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
-			pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
-			//pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
+			//pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
+			pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
 			pusher_thread_->detach();
 			//pusher_thread_audio_->detach();
 		}
 		else {
 			std::cout << "请求失败" << std::endl;
 			// rtsp 请求播放失败，停止共享内存
-			stop_reader(suffix.c_str());
+			stream_share_memory::stop_reader(suffix.c_str());
 			// TODO:: 停止rtsp协商
 
 		}
@@ -276,12 +276,12 @@ void audio_timer_function() {
 }
 
 void test_real_time(const char* share_file_name, MediaSessionId session_id) {
-	whayer::share_memory::PsPacketObject ps_packet;
+	whayer::access_gateway::PsPacketObject ps_packet;
 	//audio_timer_thread_ = std::make_shared<std::thread>(audio_timer_function);
 	//audio_timer_thread_->detach();
 
 	while (1) {
-		if (reader_pop_cache(share_file_name, ps_packet)) {
+		if (stream_share_memory::reader_pop_cache(share_file_name, ps_packet)) {
 
 			ps_buffer.insert(ps_buffer.end(), ps_packet.buffer.get(), ps_packet.buffer.get() + ps_packet.buffer_size);
 			
@@ -464,12 +464,12 @@ void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSess
 	unsigned long memory_buffer_size = 0;
 	std::unique_ptr<unsigned char> memory_buffer;
 	while (!end) {
-		read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
+		stream_share_memory::read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
 		if (!end) {
 			// 验证同步的媒体流是否正确
 			//size_t dd = fwrite(memory_buffer.get(), 1, read_frame_size, ps_handle);
 			//std::cout << "write size: " << read_frame_size << std::endl;
-			reader_push_cache(share_file_name.c_str(), memory_buffer.get(), memory_buffer_size);
+			stream_share_memory::reader_push_cache(share_file_name.c_str(), memory_buffer.get(), memory_buffer_size);
 		}
 		else {
 			fclose(h264_handle);
