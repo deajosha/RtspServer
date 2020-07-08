@@ -55,6 +55,49 @@ bool RtspRequest::ParseRequest(BufferReader *buffer)
 	return ret;
 }
 
+bool RtspRequest::ParseKeyParams(const std::string params) {
+	const std::string stream_type_prefix = "&stream_type=";
+	const std::string device_id_prefix = "&deviceId=";
+
+	const std::string stream_type_format = stream_type_prefix + "%d";
+	const std::string device_id_format = device_id_prefix + "%s";
+
+	char device_id[32] = { 0 };
+	int stream_type = -1;
+
+	int count = 0;
+	int pos = params.rfind("?");
+	if (pos != std::string::npos) {
+		std::string parse = params.substr(pos + 1);
+		std::string temp;
+
+		pos = parse.rfind(stream_type_prefix);
+		if (pos != parse.npos) {
+			temp = parse.substr(pos);
+			if (1 == sscanf_s(temp.c_str(), stream_type_format.c_str(), &stream_type)) {
+				request_line_param_.emplace("stream_type", make_pair("", stream_type));
+				++count;
+			}
+			parse = parse.substr(0, pos);
+		}
+
+		pos = parse.rfind(device_id_prefix);
+		if (pos != parse.npos) {
+			temp = parse.substr(pos);
+			if (temp.size() - device_id_prefix.size() > sizeof(device_id)) {
+				temp = temp.substr(0, device_id_prefix.size() + sizeof(device_id) - 1);
+			}
+			if (1 == sscanf_s(temp.c_str(), device_id_format.c_str(), device_id, sizeof(device_id))) {
+				request_line_param_.emplace("device_id", make_pair((std::string)device_id, 0));
+				++count;
+			}
+			parse = parse.substr(0, pos);
+		}
+	}
+
+	return (2 == count);
+}
+
 bool RtspRequest::ParseRequestLine(const char* begin, const char* end)
 {
 	string message(begin, end);
@@ -97,15 +140,20 @@ bool RtspRequest::ParseRequestLine(const char* begin, const char* end)
 	// parse url
 	uint16_t port = 0;
 	char ip[64] = {0};
-	char suffix[64] = {0};
+	char suffix[512] = {0};  //TODO: 此处需要添加判断，字符串过长了会内存溢出
 
 	if(sscanf(url+7, "%[^:]:%hu/%s", ip, &port, suffix) == 3) {
 
 	}
-	else if(sscanf(url+7, "%[^/]/%s", ip, suffix) == 2) {
+	//else if(sscanf(url+7, "%[^/]/%s", ip, suffix) == 2) {
+	else if (sscanf(url + 7, "%[^/]/%s", ip, suffix) == 2) {
 		port = 554;
 	}
 	else {
+		return false;
+	}
+
+	if (!ParseKeyParams(message)) {
 		return false;
 	}
 
@@ -331,6 +379,17 @@ std::string RtspRequest::GetRtspUrlSuffix() const
 std::string RtspRequest::GetAuthResponse() const
 {
 	return auth_response_;
+}
+
+std::string RtspRequest::get_rtsp_stram_id() const{
+	auto iter_device_id = request_line_param_.find("device_id");
+	auto iter_stream_type = request_line_param_.find("stream_type");
+	if (iter_device_id != request_line_param_.end() && iter_stream_type != request_line_param_.end()) {
+		int stream_type = (int)(iter_stream_type->second.second);
+		return (iter_device_id->second.first + "_" + std::to_string(stream_type));
+	}
+
+	return "";
 }
 
 uint8_t RtspRequest::GetRtpChannel() const

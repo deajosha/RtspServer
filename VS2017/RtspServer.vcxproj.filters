@@ -34,11 +34,11 @@
     <Filter Include="源文件\3rdpart\httplib">
       <UniqueIdentifier>{390d385a-cdf5-4376-88b9-85adeba4ac88}</UniqueIdentifier>
     </Filter>
-    <Filter Include="源文件\3rdpart\stream_share_memory">
-      <UniqueIdentifier>{2c107aec-a62f-4686-8383-f3146e204f26}</UniqueIdentifier>
-    </Filter>
     <Filter Include="源文件\3rdpart\libconfig">
       <UniqueIdentifier>{3e18d8ac-6d18-4d2e-8fe9-7382d9f89fe6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\3rdpart\stream">
+      <UniqueIdentifier>{2c107aec-a62f-4686-8383-f3146e204f26}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -299,14 +299,14 @@
     <ClInclude Include="..\src\3rdpart\httplib\httplib.h">
       <Filter>源文件\3rdpart\httplib</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_api.h">
-      <Filter>源文件\3rdpart\stream_share_memory</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_type.h">
-      <Filter>源文件\3rdpart\stream_share_memory</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\whayer\config_api.h">
       <Filter>源文件\whayer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\stream\stream_packet_type.h">
+      <Filter>源文件\3rdpart\stream</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdpart\stream\stream_share_memory_api.h">
+      <Filter>源文件\3rdpart\stream</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

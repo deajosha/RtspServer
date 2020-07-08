@@ -86,11 +86,11 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\3rdpart;..\..\StreamShareMemory\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\3rdpart;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>..\..\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\lib\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libconfig++.lib;jsoncpp.lib;StreamShareMemory.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -175,8 +175,8 @@
     <ClInclude Include="..\src\3rdpart\jsoncpp\version.h" />
     <ClInclude Include="..\src\3rdpart\jsoncpp\writer.h" />
     <ClInclude Include="..\src\3rdpart\md5\md5.hpp" />
-    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_api.h" />
-    <ClInclude Include="..\src\3rdpart\stream_share_memory\share_memory_type.h" />
+    <ClInclude Include="..\src\3rdpart\stream\stream_packet_type.h" />
+    <ClInclude Include="..\src\3rdpart\stream\stream_share_memory_api.h" />
     <ClInclude Include="..\src\net\Acceptor.h" />
     <ClInclude Include="..\src\net\BufferReader.h" />
     <ClInclude Include="..\src\net\BufferWriter.h" />

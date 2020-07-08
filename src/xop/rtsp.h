@@ -22,6 +22,9 @@ struct RtspUrlInfo
 	uint16_t port;
 	std::string suffix;
 	int stream_type; // 流类型，1:主码流 2: 辅码流
+	std::string terminal_code; //终端编码
+	std::string device_code; // 设备编码
+	std::string device_id; // 设备id
 };
 
 class Rtsp : public std::enable_shared_from_this<Rtsp>
@@ -55,8 +58,94 @@ public:
 		return rtsp_url_info_.suffix;
 	}
 
+	virtual std::string get_device_id() {
+		return rtsp_url_info_.device_id;
+	}
+
+	virtual std::string get_rtsp_steam_id() {
+		return (rtsp_url_info_.device_id + "_" + std::to_string(rtsp_url_info_.stream_type));
+	}
+
 	virtual int get_rtsp_stream_type() {
 		return rtsp_url_info_.stream_type;
+	}
+
+	virtual std::string get_device_code() {
+		return rtsp_url_info_.device_code;
+	}
+
+	virtual std::string get_terminal_code() {
+		return rtsp_url_info_.terminal_code;
+	}
+
+	void paras_rtsp_params(std::string url) {
+		const std::string stream_type_prefix = "&stream_type=";
+		const std::string device_id_prefix = "&deviceId=";
+		const std::string device_code_prefix = "&deviceCode=";
+		const std::string terminal_code_prefix = "terminalCode=";
+
+		const std::string stream_type_format = stream_type_prefix + "%d";
+		const std::string device_id_format = device_id_prefix + "%s";
+		const std::string device_code_format = device_code_prefix + "%s";
+		const std::string terminal_code_format = terminal_code_prefix + "%s";
+
+		char terminal_code[32] = { 0 };
+		char device_code[32] = { 0 };
+		char device_id[32] = { 0 };
+		int stream_type = -1;
+
+		int pos = url.rfind("?");
+		if (pos != std::string::npos) {
+			std::string params = url.substr(pos + 1);
+			std::string temp;
+
+			pos = params.rfind(stream_type_prefix);
+			if (pos != params.npos) {
+				temp = params.substr(pos);
+				if (1 == sscanf_s(temp.c_str(), stream_type_format.c_str(), &stream_type)) {
+					rtsp_url_info_.stream_type = stream_type;
+				}
+				params = params.substr(0, pos);
+			}
+
+			pos = params.rfind(device_id_prefix);
+			if (pos != params.npos) {
+				temp = params.substr(pos);
+				if (temp.size() - device_id_prefix.size() > sizeof(device_id)) {
+					temp = temp.substr(0, device_id_prefix.size() + sizeof(device_id) - 1);
+				}
+				if (1 == sscanf_s(temp.c_str(), device_id_format.c_str(), device_id, sizeof(device_id))) {
+					rtsp_url_info_.device_id = device_id;
+				}
+				params = params.substr(0, pos);
+			}
+
+			pos = params.rfind(device_code_prefix);
+			if (pos != params.npos) {
+				temp = params.substr(pos);
+				if (temp.size() - device_code_prefix.size() > sizeof(device_code)) {
+					temp = temp.substr(0, device_code_prefix.size() + sizeof(device_code) - 1);
+				}
+				if (1 == sscanf_s(temp.c_str(), device_code_format.c_str(), device_code, sizeof(device_code))){
+					rtsp_url_info_.device_code = device_code;
+				}
+				params = params.substr(0, pos);
+			}
+
+			pos = params.rfind(terminal_code_prefix);
+			if (pos != params.npos) {
+				temp = params.substr(pos);
+				if (temp.size() - terminal_code_prefix.size() > sizeof(terminal_code)) {
+					temp = temp.substr(0, terminal_code_prefix.size() + sizeof(terminal_code) - 1);
+				}
+
+				if (1 == sscanf_s(temp.c_str(), terminal_code_format.c_str(), terminal_code, sizeof(terminal_code))) {
+					rtsp_url_info_.terminal_code = terminal_code;
+				}
+
+				params = params.substr(0, pos);
+			}
+		}
 	}
 
 	bool parseRtspUrl(std::string url)
@@ -86,20 +175,11 @@ public:
 			return false;
 		}
 		
-		int stream_type_value = 1;
-		std::size_t stream_type_pos = url.find("stream_type=");
-		if (stream_type_pos != std::string::npos) {
-			
-			std::string stream_type = url.substr(stream_type_pos+1, stream_type_pos + 2);
-			if (1 == sscanf_s(stream_type.c_str(), "%d", &stream_type_value, sizeof(char))) {
-				stream_type_value = stream_type_value != 1 ? 2 : stream_type_value;
-			}
-		}
+		paras_rtsp_params(url);
 
 		rtsp_url_info_.ip = ip;
 		rtsp_url_info_.suffix = suffix;
 		rtsp_url_info_.url = url;
-		rtsp_url_info_.stream_type = stream_type_value;
 		return true;
 	}
 

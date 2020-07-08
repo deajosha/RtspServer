@@ -7,7 +7,8 @@
 #include "net/Timestamp.h"
 #include "whayer/program_stream.h"
 #include "3rdpart/jsoncpp/json.h"
-#include "stream_share_memory_api.h"
+#include "stream/stream_packet_type.h"
+#include "stream/stream_share_memory_api.h"
 #include "whayer/config_api.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -49,9 +50,9 @@ void RtspPusher::stop() {
 }
 
 void RtspPusher::setup() {
-	std::string suffix = get_rtsp_suffix();
+	std::string stream_id = get_rtsp_steam_id();
 
-	bool result = stream_share_memory::create_reader(suffix.c_str(), true, [](char code)-> void {
+	bool result = stream_share_memory::create_reader(stream_id.c_str(), true, [](char code)-> void {
 		std::cout << code << std::endl;
 		std::cout << "超时出错" << std::endl;
 	});
@@ -61,10 +62,10 @@ void RtspPusher::setup() {
 	}
 
 	unsigned int memory_size = 200 * 1024;
-	if (request_stream_share_memory(memory_size) && stream_share_memory::init_reader(suffix.c_str())) {
+	if (request_stream_share_memory(memory_size) && stream_share_memory::init_reader(stream_id.c_str())) {
 		if (request_play_real_stream()) { // 请求实时流
 			// 创建MediaSession对象
-			xop::MediaSession *session = xop::MediaSession::CreateNew(suffix);
+			xop::MediaSession *session = xop::MediaSession::CreateNew(stream_id);
 			// 添加H264源
 			session->AddSource(xop::channel_0, xop::H264Source::CreateNew());
 			//session->StartMulticast(); 
@@ -84,14 +85,14 @@ void RtspPusher::setup() {
 			// 启动拉流线程
 			//pusher_thread_audio_ = std::make_shared<std::thread>(test_aac_thread, session_id_);
 			//pusher_thread_ = std::make_shared<std::thread>(test_h264_thread, session_id_);
-			pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, suffix, session_id_);
+			pusher_thread_ = std::make_shared<std::thread>(test_reader_thread, stream_id, session_id_);
 			pusher_thread_->detach();
 			//pusher_thread_audio_->detach();
 		}
 		else {
 			std::cout << "请求失败" << std::endl;
 			// rtsp 请求播放失败，停止共享内存
-			stream_share_memory::stop_reader(suffix.c_str());
+			stream_share_memory::stop_reader(stream_id.c_str());
 			// TODO:: 停止rtsp协商
 
 		}
@@ -356,7 +357,7 @@ bool RtspPusher::request_stream_share_memory(unsigned int memory_size) {
 	httplib::Client client(rest_server_address, rest_server_port);
 
 	Json::Value param;
-	param["device_id"] = get_rtsp_suffix();
+	param["device_id"] = get_rtsp_steam_id();
 	param["memory_size"] = memory_size;
 
 	Json::StreamWriterBuilder builder;
@@ -392,7 +393,9 @@ bool RtspPusher::request_play_real_stream() {
 	httplib::Client client(rest_server_address, rest_server_port);
 
 	Json::Value param;
-	param["device_id"] = get_rtsp_suffix();
+	param["device_id"] = get_rtsp_steam_id();
+	param["terminal_code"] = get_terminal_code();
+	param["device_code"] = get_device_code();
 	param["stream_type"] = get_rtsp_stream_type();
 
 	Json::StreamWriterBuilder builder;
@@ -428,7 +431,7 @@ void RtspPusher::request_stop_real_stream() {
 
 	httplib::Client client(rest_server_address, rest_server_port);
 	Json::Value param;
-	param["device_id"] = get_rtsp_suffix();
+	param["device_id"] = get_rtsp_steam_id();
 
 	Json::StreamWriterBuilder builder;
 	const std::string request_play = Json::writeString(builder, param);
@@ -461,7 +464,7 @@ void RtspPusher::test_reader_thread(const std::string share_file_name, MediaSess
 
 	raw_data_thread_ = std::make_shared<std::thread>(test_real_time, share_file_name.c_str(), session_id);
 	raw_data_thread_->detach();
-	unsigned long memory_buffer_size = 0;
+	unsigned int memory_buffer_size = 0;
 	std::unique_ptr<unsigned char> memory_buffer;
 	while (!end) {
 		stream_share_memory::read_memory(share_file_name.c_str(), memory_buffer, memory_buffer_size, end);
@@ -642,23 +645,23 @@ RtspPusherManager* RtspPusherManager::instance() {
 	return rtsp_pusher_manager_.get();
 }
 
-void RtspPusherManager::add_pusher(const std::string &rtsp_url, const std::string& url_suffix) {
+void RtspPusherManager::add_pusher(const std::string &rtsp_url, const std::string& stream_id) {
 	std::lock_guard<std::mutex> locker(mutex_);
 	
-	if (rtsp_pusher_.find(url_suffix) == rtsp_pusher_.end()) {
+	if (rtsp_pusher_.find(stream_id) == rtsp_pusher_.end()) {
 		std::shared_ptr<RtspPusher> rtsp_pusher = std::make_shared<RtspPusher>(rtsp_url);
 		rtsp_pusher->setup();
-		session_id_pusher_.emplace(rtsp_pusher->get_session_id(), rtsp_pusher->get_rtsp_suffix());
-		rtsp_pusher_.emplace(rtsp_pusher->get_rtsp_suffix(), std::move(rtsp_pusher));
+		session_id_pusher_.emplace(rtsp_pusher->get_session_id(), rtsp_pusher->get_rtsp_steam_id());
+		rtsp_pusher_.emplace(rtsp_pusher->get_rtsp_steam_id(), std::move(rtsp_pusher));
 	}
 }
 
-void RtspPusherManager::remove_pusher(const std::string & url_suffix) {
+void RtspPusherManager::remove_pusher(const std::string & stream_id) {
 	std::lock_guard<std::mutex> locker(mutex_);
 	
-	if (rtsp_pusher_.find(url_suffix) != rtsp_pusher_.end()) {
-		rtsp_pusher_[url_suffix]->stop();
-		rtsp_pusher_.erase(url_suffix);
+	if (rtsp_pusher_.find(stream_id) != rtsp_pusher_.end()) {
+		rtsp_pusher_[stream_id]->stop();
+		rtsp_pusher_.erase(stream_id);
 	}
 }
 

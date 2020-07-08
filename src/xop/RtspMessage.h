@@ -63,6 +63,8 @@ public:
 
 	std::string GetAuthResponse() const;
 
+	std::string get_rtsp_stram_id() const;
+
 	TransportMode GetTransportMode() const
 	{ return transport_; }
 
@@ -96,6 +98,7 @@ private:
 	bool ParseSessionId(std::string& message);
 	bool ParseMediaChannel(std::string& message);
 	bool ParseAuthorization(std::string& message);
+	bool ParseKeyParams(const std::string message);
 
 	Method method_;
 	MediaChannelId channel_id_;
