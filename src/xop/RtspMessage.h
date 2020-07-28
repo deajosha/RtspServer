@@ -63,7 +63,7 @@ public:
 
 	std::string GetAuthResponse() const;
 
-	std::string get_rtsp_stram_id() const;
+	std::string get_rtsp_stream_id() const;
 
 	TransportMode GetTransportMode() const
 	{ return transport_; }

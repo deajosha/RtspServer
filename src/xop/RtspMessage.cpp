@@ -112,6 +112,9 @@ bool RtspRequest::ParseRequestLine(const char* begin, const char* end)
 	string method_str(method);
 	if(method_str == "OPTIONS") {
 		method_ = OPTIONS;
+		if (!ParseKeyParams(message)) {
+			return false;
+		}
 	}
 	else if(method_str == "DESCRIBE") {
 		method_ = DESCRIBE;
@@ -153,9 +156,7 @@ bool RtspRequest::ParseRequestLine(const char* begin, const char* end)
 		return false;
 	}
 
-	if (!ParseKeyParams(message)) {
-		return false;
-	}
+	ParseKeyParams(message);
 
 	request_line_param_.emplace("url", make_pair(string(url), 0));
 	request_line_param_.emplace("url_ip", make_pair(string(ip), 0));
@@ -381,7 +382,7 @@ std::string RtspRequest::GetAuthResponse() const
 	return auth_response_;
 }
 
-std::string RtspRequest::get_rtsp_stram_id() const{
+std::string RtspRequest::get_rtsp_stream_id() const{
 	auto iter_device_id = request_line_param_.find("device_id");
 	auto iter_stream_type = request_line_param_.find("stream_type");
 	if (iter_device_id != request_line_param_.end() && iter_stream_type != request_line_param_.end()) {
@@ -458,7 +459,7 @@ int RtspRequest::BuildDescribeRes(const char* buf, int buf_size, const char* sdp
 			this->GetCSeq(), 
 			(int)strlen(sdp), 
 			sdp);
-
+	std::cout << buf << std::endl;
 	return (int)strlen(buf);
 }
 

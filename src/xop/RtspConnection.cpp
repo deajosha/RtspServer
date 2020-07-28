@@ -248,7 +248,7 @@ void RtspConnection::HandleCmdDescribe()
 	MediaSessionPtr media_session = nullptr;
 
 	auto rtsp = rtsp_.lock();
-	std::string stream_id = rtsp_request_->get_rtsp_stram_id();
+	std::string stream_id = rtsp_request_->get_rtsp_stream_id();
 	if (rtsp && 0 < stream_id.size()) {
 		std::string rtsp_url = rtsp_request_->GetRtspUrl();
 		media_session = rtsp->LookMediaSession(stream_id);
@@ -397,7 +397,7 @@ void RtspConnection::HandleCmdTeardown()
 	HandleClose();
 
 	// 判断个数
-	RtspPusherManager::instance()->remove_pusher(rtsp_request_->get_rtsp_stram_id());
+	RtspPusherManager::instance()->remove_pusher(rtsp_request_->get_rtsp_stream_id());
 }
 
 void RtspConnection::HandleCmdGetParamter()
